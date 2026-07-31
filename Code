@@ -172,7 +172,7 @@ RunService.RenderStepped:Connect(function()
     elseif silentFovCircle then silentFovCircle.Visible = false end
 end)
 
--- AIMBOT (Fixed - No Animation Crash)
+-- AIMBOT (Fixed)
 Features.aimbotEnabled = false
 Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80 }
 local function getAdaptiveSpeed(baseSpeed)
@@ -182,7 +182,7 @@ local function getAdaptiveSpeed(baseSpeed)
         local adsVal = Features.aimbotSettings.ADSMultiplier or 100
         multiplier = multiplier * (1 + (100 - adsVal) / 100)
     end
-    return math.min(baseSpeed * multiplier * 3, 30)
+    return baseSpeed * multiplier * 3
 end
 local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
 local function createTargetIndicator()
@@ -204,62 +204,38 @@ local function getPredictedPosition(part)
     local vel = part.AssemblyLinearVelocity
     if vel.Magnitude < 0.5 then return pos end
     local cam = Camera; if not cam then return pos end
-    local distance = (cam.CFrame.Position - pos).Magnitude; local bulletSpeed = 450
-    local char = LP.Character
-    if char then local tool = char:FindFirstChildOfClass("Tool")
-        if tool then local config = tool:FindFirstChild("Configuration") or tool:FindFirstChild("Stats")
-            if config then local bs = config:FindFirstChild("BulletSpeed") or config:FindFirstChild("ProjectileSpeed") or config:FindFirstChild("Velocity")
-                if bs and bs.Value then bulletSpeed = bs.Value end
-            end
-        end
-    end
-    local timeToTarget = distance / bulletSpeed; local predictedPos = pos + (vel * timeToTarget * 0.5)
-    local maxLead = distance * 0.1; local lead = (predictedPos - pos).Magnitude
-    if lead > maxLead then predictedPos = pos + (predictedPos - pos).Unit * maxLead end
-    return pos:Lerp(predictedPos, 0.85)
+    local distance = (cam.CFrame.Position - pos).Magnitude
+    local timeToTarget = distance / 450
+    local predictedPos = pos + (vel * timeToTarget * 0.3)
+    return pos:Lerp(predictedPos, 0.5)
 end
 local function getBestTarget()
     local cam=Camera; if not cam then return nil,nil end
-    local mp=UIS:GetMouseLocation(); local fovCenter=Vector2.new(mp.X,mp.Y); local s=Features.aimbotSettings; local now=tick()
-    if s.StickyAim and lockedTarget and isValidTarget(lockedTarget) and now-lockTime<s.StickyTime then
-        local tPlayer=Players:GetPlayerFromCharacter(lockedTarget.Parent)
-        if not (s.TeamCheck and isTeammate(tPlayer)) then
-            local aimPos=getPredictedPosition(lockedTarget)
-            if (cam.CFrame.Position-aimPos).Magnitude<=s.MaxDistance then
-                local sp,on=cam:WorldToViewportPoint(aimPos)
-                if on and sp.Z>0 and (Vector2.new(sp.X,sp.Y)-fovCenter).Magnitude<=s.FOV*1.3 then
-                    if isTargetVisible(cam.CFrame.Position,aimPos,tPlayer) then targetPlayer=tPlayer; return lockedTarget,Vector2.new(sp.X,sp.Y),tPlayer end
-                end
-            end
-        end
-        lockedTarget=nil; targetPlayer=nil
-    end
-    local candidates={}
+    local mp=UIS:GetMouseLocation(); local fovCenter=Vector2.new(mp.X,mp.Y)
+    local s=Features.aimbotSettings
+    local bestPart, bestDist = nil, s.FOV
     for _,p in ipairs(Players:GetPlayers()) do
         if p==LP then continue end
         if s.TeamCheck and isTeammate(p) then continue end
         local char=p.Character; if not char then continue end
-        local part=char:FindFirstChild(s.TargetPart) or char:FindFirstChild("HumanoidRootPart")
-        if not part or not isValidTarget(part) then continue end
-        local aimPos=getPredictedPosition(part)
-        if (cam.CFrame.Position-aimPos).Magnitude>s.MaxDistance then continue end
-        local sp,on=cam:WorldToViewportPoint(aimPos)
-        if not on or sp.Z<=0 then continue end
-        local screenPos=Vector2.new(sp.X,sp.Y); local d=(screenPos-fovCenter).Magnitude
-        if d>s.FOV then continue end
-        if not isTargetVisible(cam.CFrame.Position,aimPos,p) then continue end
-        local hum=char:FindFirstChildOfClass("Humanoid")
-        table.insert(candidates,{part=part,player=p,screenPos=screenPos,dist2D=d,dist3D=(cam.CFrame.Position-aimPos).Magnitude,health=hum and hum.Health or 100})
+        local hum=char:FindFirstChildOfClass("Humanoid"); if hum and hum.Health<=0 then continue end
+        local part=char:FindFirstChild(s.TargetPart) or char:FindFirstChild("Head")
+        if not part then continue end
+        local aimPos = getPredictedPosition(part)
+        local dist3D = (cam.CFrame.Position - aimPos).Magnitude
+        if dist3D > s.MaxDistance then continue end
+        local sp, onScreen = cam:WorldToViewportPoint(aimPos)
+        if not onScreen or sp.Z <= 0 then continue end
+        local screenPos = Vector2.new(sp.X, sp.Y)
+        local dist2D = (screenPos - fovCenter).Magnitude
+        if dist2D > s.FOV then continue end
+        if s.WallCheck and not isTargetVisible(cam.CFrame.Position, aimPos, p) then continue end
+        if dist2D < bestDist then bestDist = dist2D; bestPart = part end
     end
-    if #candidates==0 then return nil,nil end
-    table.sort(candidates,function(a,b)
-        if s.TargetPriority=="FOV" then return a.dist2D<b.dist2D
-        elseif s.TargetPriority=="Distance" then return a.dist3D<b.dist3D
-        elseif s.TargetPriority=="Health" then return a.health<b.health end
-        return a.dist2D<b.dist2D
-    end)
-    local best=candidates[1]; lockedTarget=best.part; targetPlayer=best.player; lockTime=now
-    return best.part,best.screenPos,best.player
+    if not bestPart then return nil,nil end
+    local aimPos = getPredictedPosition(bestPart)
+    local sp = cam:WorldToViewportPoint(aimPos)
+    return bestPart, Vector2.new(sp.X, sp.Y)
 end
 local function moveMouseToTarget(targetScreenPos,overrideSpeed)
     local mp=UIS:GetMouseLocation()
@@ -267,10 +243,9 @@ local function moveMouseToTarget(targetScreenPos,overrideSpeed)
     local delta=targetScreenPos-cm
     local dist=delta.Magnitude
     if dist<2 then return true end
-    local speed = getAdaptiveSpeed(overrideSpeed or Features.aimbotSettings.AimSpeed)
-    local moveAmount = math.min(dist, speed * 0.2)
+    local speed = math.min((overrideSpeed or Features.aimbotSettings.AimSpeed) * 0.1, dist)
     local dir = delta.Unit
-    mousemoveabs(cm.X + dir.X * moveAmount, cm.Y + dir.Y * moveAmount)
+    mousemoverel(dir.X * speed, dir.Y * speed)
     return false
 end
 local function handleAutoFire(targetScreenPos)
@@ -422,7 +397,7 @@ if queue_on_teleport then
 end
 
 -- ═══════════════════════════════════════════════════════
---  UI (FIXED - reads current settings, logo added)
+--  UI (Logo + Fixed Settings)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -480,7 +455,7 @@ local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brand
 local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,4);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
 local logo=Instance.new("ImageLabel",brandBlock)
 logo.Size=UDim2.new(0,60,0,60);logo.BackgroundTransparency=1
-logo.Image="https://i.imgur.com/ebLjLFI.jpeg"
+logo.Image="rbxassetid://110522291929895"
 logo.ScaleType=Enum.ScaleType.Fit
 logo.LayoutOrder=1
 mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
@@ -650,19 +625,15 @@ end
 local function renderConfig()
     clearContent();local lo=1
     secHead("📂 Config",lo);lo+=1
-    
     local selectedConfig=nil;local autoLoadConfig=nil
     local savedConfigs=getAllConfigs()
     if savedConfigs["__autoLoad"]then autoLoadConfig=savedConfigs["__autoLoad"]end
-    
     local selectedLabel=mkLabel({Parent=mainScroll,Text="Selected: None",Font=FONT_MED,TextSize=11,TextColor=C.accentBrt,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
     local autoLoadLabel=mkLabel({Parent=mainScroll,Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set",Font=FONT_MED,TextSize=11,TextColor=Color3.fromRGB(255,200,50),LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
-    
     local listFrame=Instance.new("ScrollingFrame",mainScroll)
     listFrame.Size=UDim2.new(1,0,0,150);listFrame.LayoutOrder=lo;lo+=1
     listFrame.BackgroundTransparency=1;listFrame.BorderSizePixel=0;listFrame.CanvasSize=UDim2.new(0,0,0,0);listFrame.AutomaticCanvasSize=Enum.AutomaticSize.Y;listFrame.ScrollBarThickness=3;listFrame.ScrollBarImageColor3=C.accent
     local listLL=Instance.new("UIListLayout",listFrame);listLL.Padding=UDim.new(0,4);listLL.SortOrder=Enum.SortOrder.LayoutOrder
-    
     local function refreshList()
         for _,child in ipairs(listFrame:GetChildren())do if child:IsA("TextButton")then child:Destroy()end end
         local configs=getAllConfigs();local found=false
@@ -681,20 +652,16 @@ local function renderConfig()
         autoLoadLabel.Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set"
     end
     refreshList()
-    
     local nameInput=Instance.new("TextBox",mainScroll)
     nameInput.Size=UDim2.new(1,0,0,34);nameInput.LayoutOrder=lo;lo+=1
     nameInput.PlaceholderText="Config name...";nameInput.Text="";nameInput.TextColor3=C.text
     nameInput.BackgroundColor3=C.activeDim;nameInput.Font=FONT;nameInput.TextSize=13;nameInput.BorderSizePixel=0
     mkCorner(nameInput,CR_SM);mkStroke(nameInput,C.accent,0,1)
-    
     local btnRow1=Instance.new("Frame",mainScroll);btnRow1.BackgroundTransparency=1;btnRow1.Size=UDim2.new(1,0,0,34);btnRow1.LayoutOrder=lo;lo+=1
     local btnLL1=Instance.new("UIListLayout",btnRow1);btnLL1.FillDirection=Enum.FillDirection.Horizontal;btnLL1.Padding=UDim.new(0,8)
-    
     local createBtn=Instance.new("TextButton",btnRow1)
     createBtn.Size=UDim2.new(0.25,-6,1,0);createBtn.Text="✚ Create";createBtn.Font=FONT_BOL;createBtn.TextSize=11
-    createBtn.TextColor3=C.text;createBtn.BackgroundColor3=C.accent;createBtn.AutoButtonColor=false;createBtn.BorderSizePixel=0
-    mkCorner(createBtn,CR_SM)
+    createBtn.TextColor3=C.text;createBtn.BackgroundColor3=C.accent;createBtn.AutoButtonColor=false;createBtn.BorderSizePixel=0;mkCorner(createBtn,CR_SM)
     createBtn.MouseButton1Click:Connect(function()
         local name=nameInput.Text
         if name==""then showToast("Enter a name!");return end
@@ -702,31 +669,25 @@ local function renderConfig()
         local ok,msg=saveConfig(name,false)
         if ok then showToast("Created!");nameInput.Text="";refreshList()else showToast(msg)end
     end)
-    
     local overwriteBtn=Instance.new("TextButton",btnRow1)
     overwriteBtn.Size=UDim2.new(0.25,-6,1,0);overwriteBtn.Text="♻ Overwrite";overwriteBtn.Font=FONT_BOL;overwriteBtn.TextSize=11
-    overwriteBtn.TextColor3=C.text;overwriteBtn.BackgroundColor3=Color3.fromRGB(255,140,0);overwriteBtn.AutoButtonColor=false;overwriteBtn.BorderSizePixel=0
-    mkCorner(overwriteBtn,CR_SM)
+    overwriteBtn.TextColor3=C.text;overwriteBtn.BackgroundColor3=Color3.fromRGB(255,140,0);overwriteBtn.AutoButtonColor=false;overwriteBtn.BorderSizePixel=0;mkCorner(overwriteBtn,CR_SM)
     overwriteBtn.MouseButton1Click:Connect(function()
         local name=selectedConfig or nameInput.Text
         if name==""then showToast("Select or enter name!");return end
         local ok,msg=saveConfig(name,true)
         if ok then showToast("Saved!");refreshList()else showToast(msg)end
     end)
-    
     local loadBtn=Instance.new("TextButton",btnRow1)
     loadBtn.Size=UDim2.new(0.25,-6,1,0);loadBtn.Text="📂 Load";loadBtn.Font=FONT_BOL;loadBtn.TextSize=11
-    loadBtn.TextColor3=C.text;loadBtn.BackgroundColor3=Color3.fromRGB(40,140,40);loadBtn.AutoButtonColor=false;loadBtn.BorderSizePixel=0
-    mkCorner(loadBtn,CR_SM)
+    loadBtn.TextColor3=C.text;loadBtn.BackgroundColor3=Color3.fromRGB(40,140,40);loadBtn.AutoButtonColor=false;loadBtn.BorderSizePixel=0;mkCorner(loadBtn,CR_SM)
     loadBtn.MouseButton1Click:Connect(function()
         if not selectedConfig then showToast("Select a config!");return end
         local ok,msg=loadConfig(selectedConfig);showToast(msg)
     end)
-    
     local deleteBtn=Instance.new("TextButton",btnRow1)
     deleteBtn.Size=UDim2.new(0.25,-6,1,0);deleteBtn.Text="🗑 Delete";deleteBtn.Font=FONT_BOL;deleteBtn.TextSize=11
-    deleteBtn.TextColor3=C.text;deleteBtn.BackgroundColor3=Color3.fromRGB(200,50,50);deleteBtn.AutoButtonColor=false;deleteBtn.BorderSizePixel=0
-    mkCorner(deleteBtn,CR_SM)
+    deleteBtn.TextColor3=C.text;deleteBtn.BackgroundColor3=Color3.fromRGB(200,50,50);deleteBtn.AutoButtonColor=false;deleteBtn.BorderSizePixel=0;mkCorner(deleteBtn,CR_SM)
     deleteBtn.MouseButton1Click:Connect(function()
         if not selectedConfig then showToast("Select a config!");return end
         local ok,msg=deleteConfig(selectedConfig)
@@ -735,32 +696,25 @@ local function renderConfig()
             selectedConfig=nil;refreshList();showToast("Deleted!")
         else showToast(msg)end
     end)
-    
     local btnRow2=Instance.new("Frame",mainScroll);btnRow2.BackgroundTransparency=1;btnRow2.Size=UDim2.new(1,0,0,34);btnRow2.LayoutOrder=lo;lo+=1
     local btnLL2=Instance.new("UIListLayout",btnRow2);btnLL2.FillDirection=Enum.FillDirection.Horizontal;btnLL2.Padding=UDim.new(0,8)
-    
     local autoBtn=Instance.new("TextButton",btnRow2)
     autoBtn.Size=UDim2.new(0.5,-4,1,0);autoBtn.Text="⭐ Set Auto Load";autoBtn.Font=FONT_BOL;autoBtn.TextSize=11
-    autoBtn.TextColor3=C.text;autoBtn.BackgroundColor3=Color3.fromRGB(255,200,50);autoBtn.AutoButtonColor=false;autoBtn.BorderSizePixel=0
-    mkCorner(autoBtn,CR_SM)
+    autoBtn.TextColor3=C.text;autoBtn.BackgroundColor3=Color3.fromRGB(255,200,50);autoBtn.AutoButtonColor=false;autoBtn.BorderSizePixel=0;mkCorner(autoBtn,CR_SM)
     autoBtn.MouseButton1Click:Connect(function()
         if not selectedConfig then showToast("Select a config!");return end
         autoLoadConfig=selectedConfig;local c=getAllConfigs();c["__autoLoad"]=selectedConfig;saveConfigsToFile(c)
         refreshList();showToast("Set!")
     end)
-    
     local clearBtn=Instance.new("TextButton",btnRow2)
     clearBtn.Size=UDim2.new(0.5,-4,1,0);clearBtn.Text="❌ Clear";clearBtn.Font=FONT_BOL;clearBtn.TextSize=11
-    clearBtn.TextColor3=C.text;clearBtn.BackgroundColor3=Color3.fromRGB(150,50,50);clearBtn.AutoButtonColor=false;clearBtn.BorderSizePixel=0
-    mkCorner(clearBtn,CR_SM)
+    clearBtn.TextColor3=C.text;clearBtn.BackgroundColor3=Color3.fromRGB(150,50,50);clearBtn.AutoButtonColor=false;clearBtn.BorderSizePixel=0;mkCorner(clearBtn,CR_SM)
     clearBtn.MouseButton1Click:Connect(function()
         autoLoadConfig=nil;local c=getAllConfigs();c["__autoLoad"]=nil;saveConfigsToFile(c)
         refreshList();showToast("Cleared!")
     end)
-    
     mkSep(mainScroll,lo);lo+=1
     secHead("🔄 Auto Load Toggle",lo);lo+=1
-    
     local autoLoadFrame=Instance.new("Frame",mainScroll);autoLoadFrame.Size=UDim2.new(1,0,0,40);autoLoadFrame.LayoutOrder=lo
     autoLoadFrame.BackgroundColor3=C.row;autoLoadFrame.BorderSizePixel=0;mkCorner(autoLoadFrame,CR_SM);mkStroke(autoLoadFrame,C.sep,0.4,1);mkPad(autoLoadFrame,8,14,8,14)
     mkLabel({Parent=autoLoadFrame,Text="Enable Auto Load on Join",Font=FONT_MED,TextSize=12,TextColor=C.text,Size=UDim2.new(0,220,1,0)})
@@ -768,7 +722,6 @@ local function renderConfig()
     local autoLoadKnob=Instance.new("Frame",autoLoadTrack);autoLoadKnob.Size=UDim2.new(0,16,0,16);autoLoadKnob.Position=UDim2.new(0,3,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(180,180,200);autoLoadKnob.BorderSizePixel=0;mkCorner(autoLoadKnob,UDim.new(1,0))
     local autoLoadEnabled=(savedConfigs["__autoLoadEnabled"]==true)
     if autoLoadEnabled then mkGradient(autoLoadTrack,C.accent,C.accentBrt);autoLoadKnob.Position=UDim2.new(1,-19,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(255,255,255)end
-    
     autoLoadTrack.MouseButton1Click:Connect(function()
         autoLoadEnabled=not autoLoadEnabled;local c=getAllConfigs()
         if autoLoadEnabled then
