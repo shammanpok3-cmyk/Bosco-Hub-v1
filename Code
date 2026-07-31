@@ -66,6 +66,40 @@ end
 
 local Features = {}
 
+-- ANTI-CHEAT BYPASS
+local oldtable; oldtable = hookfunction(getrenv().setmetatable, newcclosure(function(Table, Metatable)
+    if Metatable and typeof(Metatable) == "table" and rawget(Metatable, "__mode") == "kv" then
+        local trace = debug.traceback()
+        if trace:find("LocalScript3") or trace:find("MiscellaneousController") then
+            return oldtable({1, 2, 3}, {})
+        end
+    end
+    return oldtable(Table, Metatable)
+end))
+local oldgc = getgc; getgc = function(...)
+    local gc = oldgc(...)
+    local filtered = {}
+    for _, v in ipairs(gc) do
+        if typeof(v) == "function" then
+            local src = debug.info(v, "s")
+            if not (src and (src:find("LocalScript3") or src:find("MiscellaneousController"))) then
+                table.insert(filtered, v)
+            end
+        else
+            table.insert(filtered, v)
+        end
+    end
+    return filtered
+end
+for _, v in getgc() do
+    if typeof(v) == "function" then
+        local src = debug.info(v, "s")
+        if src and (src:find("LocalScript3") or src:find("MiscellaneousController")) then
+            hookfunction(v, newcclosure(function() return task.wait(9e9) end))
+        end
+    end
+end
+
 -- INFINITE JUMP
 Features.infiniteJumpEnabled = false
 Features.infiniteJumpPower = 50
@@ -172,17 +206,17 @@ RunService.RenderStepped:Connect(function()
     elseif silentFovCircle then silentFovCircle.Visible = false end
 end)
 
--- AIMBOT (Fixed)
+-- AIMBOT
 Features.aimbotEnabled = false
 Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80 }
 local function getAdaptiveSpeed(baseSpeed)
     local sens = UIS.MouseDeltaSensitivity or 0.5
     local multiplier = 0.5 / math.max(sens, 0.01)
     if Features.aimbotSettings.ADSEnabled and Features.aimbotSettings.RequireRightClick and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local adsVal = Features.aimbotSettings.ADSMultiplier or 100
-        multiplier = multiplier * (1 + (100 - adsVal) / 100)
+        local adsVal = math.max(Features.aimbotSettings.ADSMultiplier or 100, 1)
+        multiplier = multiplier * (100 / adsVal)
     end
-    return baseSpeed * multiplier * 3
+    return baseSpeed * multiplier * 8
 end
 local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
 local function createTargetIndicator()
@@ -205,14 +239,33 @@ local function getPredictedPosition(part)
     if vel.Magnitude < 0.5 then return pos end
     local cam = Camera; if not cam then return pos end
     local distance = (cam.CFrame.Position - pos).Magnitude
-    local timeToTarget = distance / 450
-    local predictedPos = pos + (vel * timeToTarget * 0.3)
-    return pos:Lerp(predictedPos, 0.5)
+    local bulletSpeed = 450
+    local char = LP.Character
+    if char then local tool = char:FindFirstChildOfClass("Tool")
+        if tool then local config = tool:FindFirstChild("Configuration") or tool:FindFirstChild("Stats")
+            if config then local bs = config:FindFirstChild("BulletSpeed") or config:FindFirstChild("ProjectileSpeed") or config:FindFirstChild("Velocity")
+                if bs and bs.Value then bulletSpeed = bs.Value end
+            end
+        end
+    end
+    return pos + (vel * (distance / bulletSpeed))
 end
 local function getBestTarget()
     local cam=Camera; if not cam then return nil,nil end
-    local mp=UIS:GetMouseLocation(); local fovCenter=Vector2.new(mp.X,mp.Y)
-    local s=Features.aimbotSettings
+    local mp=UIS:GetMouseLocation(); local fovCenter=Vector2.new(mp.X,mp.Y); local s=Features.aimbotSettings; local now=tick()
+    if s.StickyAim and lockedTarget and isValidTarget(lockedTarget) and now-lockTime<s.StickyTime then
+        local tPlayer=Players:GetPlayerFromCharacter(lockedTarget.Parent)
+        if not (s.TeamCheck and isTeammate(tPlayer)) then
+            local aimPos=getPredictedPosition(lockedTarget)
+            if (cam.CFrame.Position-aimPos).Magnitude<=s.MaxDistance then
+                local sp,on=cam:WorldToViewportPoint(aimPos)
+                if on and sp.Z>0 and (Vector2.new(sp.X,sp.Y)-fovCenter).Magnitude<=s.FOV*1.3 then
+                    if not s.WallCheck or isTargetVisible(cam.CFrame.Position,aimPos,tPlayer) then targetPlayer=tPlayer; return lockedTarget,Vector2.new(sp.X,sp.Y) end
+                end
+            end
+        end
+        lockedTarget=nil; targetPlayer=nil
+    end
     local bestPart, bestDist = nil, s.FOV
     for _,p in ipairs(Players:GetPlayers()) do
         if p==LP then continue end
@@ -222,30 +275,26 @@ local function getBestTarget()
         local part=char:FindFirstChild(s.TargetPart) or char:FindFirstChild("Head")
         if not part then continue end
         local aimPos = getPredictedPosition(part)
-        local dist3D = (cam.CFrame.Position - aimPos).Magnitude
-        if dist3D > s.MaxDistance then continue end
+        if (cam.CFrame.Position-aimPos).Magnitude>s.MaxDistance then continue end
         local sp, onScreen = cam:WorldToViewportPoint(aimPos)
-        if not onScreen or sp.Z <= 0 then continue end
-        local screenPos = Vector2.new(sp.X, sp.Y)
-        local dist2D = (screenPos - fovCenter).Magnitude
-        if dist2D > s.FOV then continue end
-        if s.WallCheck and not isTargetVisible(cam.CFrame.Position, aimPos, p) then continue end
+        if not onScreen or sp.Z<=0 then continue end
+        local dist2D = (Vector2.new(sp.X,sp.Y)-fovCenter).Magnitude
+        if dist2D>s.FOV then continue end
+        if s.WallCheck and not isTargetVisible(cam.CFrame.Position,aimPos,p) then continue end
         if dist2D < bestDist then bestDist = dist2D; bestPart = part end
     end
     if not bestPart then return nil,nil end
+    lockedTarget=bestPart; lockTime=now
     local aimPos = getPredictedPosition(bestPart)
     local sp = cam:WorldToViewportPoint(aimPos)
     return bestPart, Vector2.new(sp.X, sp.Y)
 end
 local function moveMouseToTarget(targetScreenPos,overrideSpeed)
-    local mp=UIS:GetMouseLocation()
-    local cm=Vector2.new(mp.X,mp.Y)
-    local delta=targetScreenPos-cm
-    local dist=delta.Magnitude
+    local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local delta=targetScreenPos-cm; local dist=delta.Magnitude
     if dist<2 then return true end
-    local speed = math.min((overrideSpeed or Features.aimbotSettings.AimSpeed) * 0.1, dist)
-    local dir = delta.Unit
-    mousemoverel(dir.X * speed, dir.Y * speed)
+    local speed = getAdaptiveSpeed(overrideSpeed or Features.aimbotSettings.AimSpeed)
+    local moveAmount = math.min(dist * 0.6, speed * 2)
+    local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
     return false
 end
 local function handleAutoFire(targetScreenPos)
@@ -292,38 +341,65 @@ local function updateFlickFOV()
     local mp=UIS:GetMouseLocation(); flickFovCircle.Position=Vector2.new(mp.X,mp.Y); flickFovCircle.Color=Color3.fromRGB(255,200,50)
 end
 local function doFlick()
-    if isFlicking then return end; isFlicking=true
+    if isFlicking then return end; isFlicking = true
     local savedMouseBehavior = UIS.MouseBehavior; UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
-    local mx,my=UIS:GetMouseLocation().X,UIS:GetMouseLocation().Y; local totalDX,totalDY=0,0
-    local targetHead=nil; local cam=Camera
+    local mx, my = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
+    local targetHead, targetScreenPos = nil, nil
+    local cam = Camera; local s = Features.flickSettings
+    local adsMultiplier = 1
+    if Features.aimbotSettings.ADSEnabled and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local adsVal = math.max(Features.aimbotSettings.ADSMultiplier or 100, 1)
+        adsMultiplier = 100 / adsVal
+    end
     if cam then
-        local bestD=Features.flickSettings.FOV
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p==LP then continue end
-            if Features.flickSettings.TeamCheck and isTeammate(p) then continue end
-            local char=p.Character; if not char then continue end
-            local head=char:FindFirstChild("Head"); if not head then continue end
-            local hum=char:FindFirstChildOfClass("Humanoid"); if hum and hum.Health<=0 then continue end
-            if (cam.CFrame.Position-head.Position).Magnitude>Features.flickSettings.MaxDistance then continue end
-            if Features.flickSettings.WallCheck and not isTargetVisible(cam.CFrame.Position,head.Position,p) then continue end
-            local sp,on=cam:WorldToViewportPoint(head.Position)
-            if on then local d=math.sqrt((sp.X-mx)^2+(sp.Y-my)^2)
-                if d<bestD then bestD=d; targetHead=head end
+        local bestDist = s.FOV
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LP then continue end
+            if s.TeamCheck and isTeammate(p) then continue end
+            local char = p.Character; if not char then continue end
+            local head = char:FindFirstChild("Head"); if not head then continue end
+            local hum = char:FindFirstChildOfClass("Humanoid"); if hum and hum.Health <= 0 then continue end
+            if (cam.CFrame.Position - head.Position).Magnitude > s.MaxDistance then continue end
+            if s.WallCheck and not isTargetVisible(cam.CFrame.Position, head.Position, p) then continue end
+            local aimPos = head.Position
+            if Features.aimbotSettings.Prediction then
+                local vel = head.AssemblyLinearVelocity
+                if vel.Magnitude > 0.5 then
+                    local distance = (cam.CFrame.Position - head.Position).Magnitude
+                    local bulletSpeed = 450
+                    local c = LP.Character
+                    if c then local t = c:FindFirstChildOfClass("Tool")
+                        if t then local cfg = t:FindFirstChild("Configuration") or t:FindFirstChild("Stats")
+                            if cfg then local bs = cfg:FindFirstChild("BulletSpeed") or cfg:FindFirstChild("ProjectileSpeed") or cfg:FindFirstChild("Velocity")
+                                if bs and bs.Value then bulletSpeed = bs.Value end
+                            end
+                        end
+                    end
+                    aimPos = head.Position + (vel * (distance / bulletSpeed))
+                end
+            end
+            local sp, on = cam:WorldToViewportPoint(aimPos)
+            if on then
+                local d = math.sqrt((sp.X - mx)^2 + (sp.Y - my)^2)
+                if d < bestDist then bestDist = d; targetHead = head; targetScreenPos = sp end
             end
         end
     end
-    if not targetHead then UIS.MouseBehavior=savedMouseBehavior; isFlicking=false; return end
-    local sp,on=cam:WorldToViewportPoint(targetHead.Position)
-    if not on then UIS.MouseBehavior=savedMouseBehavior; isFlicking=false; return end
-    local dx,dy=sp.X-mx,sp.Y-my; local stepX,stepY=dx/4,dy/4
-    local m1X,m1Y=stepX*2,stepY*2; mousemoverel(m1X,m1Y); totalDX=totalDX+m1X; totalDY=totalDY+m1Y; task.wait(0.005)
-    mousemoverel(m1X,m1Y); totalDX=totalDX+m1X; totalDY=totalDY+m1Y; task.wait(0.005)
-    local m2X,m2Y=stepX*0.6,stepY*0.6; mousemoverel(m2X,m2Y); totalDX=totalDX+m2X; totalDY=totalDY+m2Y; task.wait(0.008)
-    local wasSilent=Features.silentAimEnabled; Features.silentAimEnabled=true; mouse1press()
-    mousemoverel(-totalDX*0.9,-totalDY*0.9); task.wait(0.003)
-    mousemoverel(-totalDX*0.1,-totalDY*0.1); task.wait(0.005)
-    mouse1release(); Features.silentAimEnabled=wasSilent
-    UIS.MouseBehavior=savedMouseBehavior; isFlicking=false
+    if not targetHead then UIS.MouseBehavior = savedMouseBehavior; isFlicking = false; return end
+    local dx = (targetScreenPos.X - mx) * adsMultiplier
+    local dy = (targetScreenPos.Y - my) * adsMultiplier
+    mousemoverel(dx * 0.4, dy * 0.4); task.wait(0.002)
+    mousemoverel(dx * 0.35, dy * 0.35); task.wait(0.002)
+    mousemoverel(dx * 0.20, dy * 0.20); task.wait(0.001)
+    local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
+    mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
+    mouse1press(); mouse1release()
+    UIS.MouseBehavior = savedMouseBehavior
+    local rx = -(targetScreenPos.X - mx); local ry = -(targetScreenPos.Y - my)
+    mousemoverel(rx * 0.5 * 0.9, ry * 0.5 * 0.9); task.wait(0.002)
+    mousemoverel(rx * 0.3 * 0.7, ry * 0.3 * 0.7); task.wait(0.002)
+    mousemoverel(rx * 0.2 * 0.5, ry * 0.2 * 0.5)
+    isFlicking = false
 end
 RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
 
@@ -397,7 +473,7 @@ if queue_on_teleport then
 end
 
 -- ═══════════════════════════════════════════════════════
---  UI (Logo + Fixed Settings)
+--  UI (BH Logo + Fixed Settings)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -450,16 +526,16 @@ local sbScroll=Instance.new("ScrollingFrame");sbScroll.BackgroundTransparency=1;
 mkPad(sbScroll,12,10,12,10)
 local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,4);sbLL.SortOrder=Enum.SortOrder.LayoutOrder;sbLL.Parent=sbScroll
 
--- Logo + Brand
-local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,110);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
-local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,4);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
-local logo=Instance.new("ImageLabel",brandBlock)
-logo.Size=UDim2.new(0,60,0,60);logo.BackgroundTransparency=1
-logo.Image="rbxassetid://110522291929895"
-logo.ScaleType=Enum.ScaleType.Fit
-logo.LayoutOrder=1
-mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
-mkLabel({Parent=brandBlock,Text="V1",Font=FONT_BOL,TextSize=12,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=3})
+-- BH ASCII Logo
+local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,100);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
+local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,2);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
+mkLabel({Parent=brandBlock,Text="██████╗  ██╗  ██╗",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=1})
+mkLabel({Parent=brandBlock,Text="██╔══██╗ ██║  ██║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=2})
+mkLabel({Parent=brandBlock,Text="██████╔╝ ███████║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=3})
+mkLabel({Parent=brandBlock,Text="██╔══██╗ ██╔══██║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=4})
+mkLabel({Parent=brandBlock,Text="██████╔╝ ██║  ██║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=5})
+mkLabel({Parent=brandBlock,Text="╚═════╝  ╚═╝  ╚═╝",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=6})
+mkLabel({Parent=brandBlock,Text="V1  |  Bosco Hub",Font=FONT_BOL,TextSize=10,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=7})
 
 local navBtns={};local activeNav=nil
 local function setNavActive(btn)if activeNav then activeNav.BackgroundColor3=Color3.fromRGB(0,0,0);activeNav.BackgroundTransparency=1;activeNav.TextColor3=C.textDim end;activeNav=btn;btn.BackgroundColor3=C.activeDim;btn.BackgroundTransparency=0;btn.TextColor3=C.accentBrt end
@@ -571,7 +647,7 @@ local function renderAimbot()
     createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
     createToggle({title="Require Right Click",desc="Only aim when right clicking",layoutOrder=lo,default=s.RequireRightClick,onChange=function(on)s.RequireRightClick=on end});lo+=1
     createToggle({title="ADS Enabled",desc="Adjust aim speed when ADSing",layoutOrder=lo,default=s.ADSEnabled,onChange=function(on)s.ADSEnabled=on end});lo+=1
-    createDualSlider({title="ADS Multiplier",desc="Lower = faster ADS aim",layoutOrder=lo,default=s.ADSMultiplier or 80,min=10,max=200,onChange=function(v)s.ADSMultiplier=v end});lo+=1
+    createDualSlider({title="ADS Multiplier %",desc="10% = fastest | 100% = normal | 200% = slowest",layoutOrder=lo,default=s.ADSMultiplier or 80,min=10,max=200,onChange=function(v)s.ADSMultiplier=v end});lo+=1
     createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=s.AutoFire,onChange=function(on)s.AutoFire=on end});lo+=1
 end
 
