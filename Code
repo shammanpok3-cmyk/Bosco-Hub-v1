@@ -182,7 +182,7 @@ local function getAdaptiveSpeed(baseSpeed)
         local adsVal = Features.aimbotSettings.ADSMultiplier or 100
         multiplier = multiplier * (1 + (100 - adsVal) / 100)
     end
-    return baseSpeed * multiplier
+    return baseSpeed * multiplier * 3
 end
 local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
 local function createTargetIndicator()
@@ -265,8 +265,7 @@ local function moveMouseToTarget(targetScreenPos,overrideSpeed)
     local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local delta=targetScreenPos-cm; local dist=delta.Magnitude
     if dist<2 then return true end
     local speed = getAdaptiveSpeed(overrideSpeed or Features.aimbotSettings.AimSpeed)
-    local snapPercent = math.clamp((speed / 50) ^ 1.5, 0, 2); local moveAmount = dist * snapPercent * 0.95
-    moveAmount = math.max(moveAmount, dist * 0.002); moveAmount = math.min(moveAmount, dist * 0.95)
+    local moveAmount = math.min(dist, speed * 0.016)
     local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
     return false
 end
@@ -364,7 +363,7 @@ LP.CharacterAdded:Connect(function() if Features.skinChangerEnabled then skinCha
 
 -- KEYBINDS
 local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
-local function keyName(kc) if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
+local function keyName(kc) if kc == nil then return "None" end; if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
 
 -- CONFIG SYSTEM
 local configFileName = "BoscoHub_Configs.json"
@@ -395,7 +394,7 @@ local function loadConfig(name)
     if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
     if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end
     if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end
-    if data.keybinds then for k, v in pairs(data.keybinds) do Keybinds[k] = v end end
+    if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] and v.key then Keybinds[k] = v end end end
     return true, "Loaded!"
 end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
@@ -410,7 +409,7 @@ end
 -- Auto execute on teleport
 if queue_on_teleport then
     if saved["__autoLoadEnabled"] then
-        queue_on_teleport([[loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()]])
+        queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code"))()]])
     end
 end
 
