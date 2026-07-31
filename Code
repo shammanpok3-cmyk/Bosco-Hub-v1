@@ -415,7 +415,7 @@ if queue_on_teleport then
 end
 
 -- ═══════════════════════════════════════════════════════
---  UI
+--  UI (FIXED - reads current settings)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -519,7 +519,7 @@ local function createDualSlider(props)
     local textBox=Instance.new("TextBox");textBox.Size=UDim2.fromOffset(55,22);textBox.Position=UDim2.new(1,-55,0,0);textBox.BackgroundColor3=C.activeDim;textBox.TextColor3=C.text;textBox.Font=FONT_MED;textBox.TextSize=12;textBox.Text=tostring(props.default);mkCorner(textBox,CR_SM);mkStroke(textBox,C.accent,0,1);textBox.Parent=row
     if props.desc then mkLabel({Parent=row,Text=props.desc,TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})end
     local trk=Instance.new("Frame");trk.BackgroundColor3=C.sliderTrack;trk.Position=UDim2.fromOffset(0,44);trk.Size=UDim2.new(1,0,0,7);mkCorner(trk,UDim.new(1,0));trk.Parent=row
-    local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(0.5,1);mkCorner(fill,UDim.new(1,0));fill.Parent=trk;mkGradient(fill,C.accent,C.accentBrt)
+    local fill=Instance.new("Frame");fill.Size=UDim2.fromScale((props.default-props.min)/(props.max-props.min),1);mkCorner(fill,UDim.new(1,0));fill.Parent=trk;mkGradient(fill,C.accent,C.accentBrt)
     local hit=Instance.new("TextButton");hit.BackgroundTransparency=1;hit.Text="";hit.Size=UDim2.new(1,0,0,22);hit.Position=UDim2.fromOffset(0,36);hit.Parent=row
     mkLabel({Parent=row,Text=tostring(props.min),TextSize=9,TextColor=C.textDim,Position=UDim2.fromOffset(0,56),Size=UDim2.fromOffset(30,14)})
     mkLabel({Parent=row,Text=tostring(props.max),TextSize=9,TextColor=C.textDim,Position=UDim2.new(1,-30,0,56),Size=UDim2.fromOffset(30,14),TextXAlignment=Enum.TextXAlignment.Right})
@@ -568,47 +568,47 @@ local function createKeybindRow(props)
     return row
 end
 
--- PAGES
+-- PAGES (ALL DEFAULTS READ FROM Features.*Settings.*)
 local function renderAimbot()
-    clearContent();local lo=1
+    clearContent();local lo=1;local s=Features.aimbotSettings
     secHead("🎯 Aimbot",lo);lo+=1
     createToggle({title="Enable Aimbot",desc="Toggle aimbot on/off",layoutOrder=lo,default=Features.aimbotEnabled,onChange=function(on)Features.setAimbot(on)end});lo+=1
-    createDualSlider({title="FOV",desc="Aimbot field of view",layoutOrder=lo,default=120,min=30,max=500,onChange=function(v)Features.aimbotSettings.FOV=v end});lo+=1
-    createDualSlider({title="Aim Speed",desc="Smoothness of aim",layoutOrder=lo,default=15,min=1,max=50,onChange=function(v)Features.aimbotSettings.AimSpeed=v end});lo+=1
-    createCycleButton({title="Target Part",desc="Body part to aim at",layoutOrder=lo,default="Head",options={"Head","HumanoidRootPart","UpperTorso","LowerTorso"},onChange=function(v)Features.aimbotSettings.TargetPart=v end});lo+=1
-    createCycleButton({title="Priority",desc="Target selection priority",layoutOrder=lo,default="FOV",options={"FOV","Distance","Health"},onChange=function(v)Features.aimbotSettings.TargetPriority=v end});lo+=1
-    createToggle({title="Wall Check",desc="Only target visible enemies",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.WallCheck=on end});lo+=1
-    createToggle({title="Team Check",desc="Ignore teammates",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.TeamCheck=on end});lo+=1
-    createToggle({title="Prediction",desc="Predict enemy movement",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.Prediction=on end});lo+=1
-    createToggle({title="Sticky Aim",desc="Stay locked on target",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.StickyAim=on end});lo+=1
-    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.ShowFOV=on end});lo+=1
-    createToggle({title="Require Right Click",desc="Only aim when right clicking",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.RequireRightClick=on end});lo+=1
-    createToggle({title="ADS Enabled",desc="Adjust aim speed when ADSing",layoutOrder=lo,default=Features.aimbotSettings.ADSEnabled,onChange=function(on)Features.aimbotSettings.ADSEnabled=on end});lo+=1
-    createDualSlider({title="ADS Multiplier",desc="Lower = faster ADS aim",layoutOrder=lo,default=Features.aimbotSettings.ADSMultiplier or 80,min=10,max=200,onChange=function(v)Features.aimbotSettings.ADSMultiplier=v end});lo+=1
-    createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=false,onChange=function(on)Features.aimbotSettings.AutoFire=on end});lo+=1
+    createDualSlider({title="FOV",desc="Aimbot field of view",layoutOrder=lo,default=s.FOV,min=30,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Aim Speed",desc="Smoothness of aim",layoutOrder=lo,default=s.AimSpeed,min=1,max=50,onChange=function(v)s.AimSpeed=v end});lo+=1
+    createCycleButton({title="Target Part",desc="Body part to aim at",layoutOrder=lo,default=s.TargetPart,options={"Head","HumanoidRootPart","UpperTorso","LowerTorso"},onChange=function(v)s.TargetPart=v end});lo+=1
+    createCycleButton({title="Priority",desc="Target selection priority",layoutOrder=lo,default=s.TargetPriority,options={"FOV","Distance","Health"},onChange=function(v)s.TargetPriority=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only target visible enemies",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Ignore teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Prediction",desc="Predict enemy movement",layoutOrder=lo,default=s.Prediction,onChange=function(on)s.Prediction=on end});lo+=1
+    createToggle({title="Sticky Aim",desc="Stay locked on target",layoutOrder=lo,default=s.StickyAim,onChange=function(on)s.StickyAim=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+    createToggle({title="Require Right Click",desc="Only aim when right clicking",layoutOrder=lo,default=s.RequireRightClick,onChange=function(on)s.RequireRightClick=on end});lo+=1
+    createToggle({title="ADS Enabled",desc="Adjust aim speed when ADSing",layoutOrder=lo,default=s.ADSEnabled,onChange=function(on)s.ADSEnabled=on end});lo+=1
+    createDualSlider({title="ADS Multiplier",desc="Lower = faster ADS aim",layoutOrder=lo,default=s.ADSMultiplier or 80,min=10,max=200,onChange=function(v)s.ADSMultiplier=v end});lo+=1
+    createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=s.AutoFire,onChange=function(on)s.AutoFire=on end});lo+=1
 end
 
 local function renderSilentAim()
-    clearContent();local lo=1
+    clearContent();local lo=1;local s=Features.silentAimSettings
     secHead("🔇 Silent Aim",lo);lo+=1
     createToggle({title="Enable Silent Aim",desc="Hit targets without aiming at them",layoutOrder=lo,default=Features.silentAimEnabled,onChange=function(on)Features.setSilentAim(on)end});lo+=1
-    createDualSlider({title="FOV",desc="Silent aim field of view",layoutOrder=lo,default=300,min=50,max=1000,onChange=function(v)Features.silentAimSettings.FOV=v end});lo+=1
-    createDualSlider({title="Max Distance",desc="Maximum targeting range",layoutOrder=lo,default=500,min=50,max=2000,onChange=function(v)Features.silentAimSettings.MaxDistance=v end});lo+=1
-    createCycleButton({title="Hit Part",desc="Which body part to hit",layoutOrder=lo,default="Head",options={"Head","HumanoidRootPart","UpperTorso"},onChange=function(v)Features.silentAimSettings.HitPart=v end});lo+=1
-    createToggle({title="Team Check",desc="Don't hit teammates",layoutOrder=lo,default=true,onChange=function(on)Features.silentAimSettings.TeamCheck=on end});lo+=1
-    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=Features.silentAimSettings.ShowFOV,onChange=function(on)Features.silentAimSettings.ShowFOV=on end});lo+=1
+    createDualSlider({title="FOV",desc="Silent aim field of view",layoutOrder=lo,default=s.FOV,min=50,max=1000,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum targeting range",layoutOrder=lo,default=s.MaxDistance,min=50,max=2000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createCycleButton({title="Hit Part",desc="Which body part to hit",layoutOrder=lo,default=s.HitPart,options={"Head","HumanoidRootPart","UpperTorso"},onChange=function(v)s.HitPart=v end});lo+=1
+    createToggle({title="Team Check",desc="Don't hit teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
 end
 
 local function renderFlick()
-    clearContent();local lo=1
+    clearContent();local lo=1;local s=Features.flickSettings
     secHead("💨 Flick",lo);lo+=1
     createToggle({title="Enable Flick",desc="Flick to nearest head and shoot",layoutOrder=lo,default=Features.flickEnabled,onChange=function(on)Features.flickEnabled=on end});lo+=1
-    createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=300,min=50,max=500,onChange=function(v)Features.flickSettings.FOV=v end});lo+=1
-    createDualSlider({title="Speed",desc="Flick speed multiplier",layoutOrder=lo,default=25,min=5,max=50,onChange=function(v)Features.flickSettings.Speed=v end});lo+=1
-    createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=500,min=50,max=1000,onChange=function(v)Features.flickSettings.MaxDistance=v end});lo+=1
-    createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=true,onChange=function(on)Features.flickSettings.WallCheck=on end});lo+=1
-    createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=true,onChange=function(on)Features.flickSettings.TeamCheck=on end});lo+=1
-    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=Features.flickSettings.ShowFOV,onChange=function(on)Features.flickSettings.ShowFOV=on end});lo+=1
+    createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Speed",desc="Flick speed multiplier",layoutOrder=lo,default=s.Speed,min=5,max=50,onChange=function(v)s.Speed=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
 end
 
 local function renderInfiniteJump()
@@ -618,14 +618,14 @@ local function renderInfiniteJump()
 end
 
 local function renderESP()
-    clearContent();local lo=1
+    clearContent();local lo=1;local s=Features.espSettings
     secHead("👁 ESP",lo);lo+=1
     createToggle({title="Enable ESP",desc="See enemies through walls",layoutOrder=lo,default=Features.espEnabled,onChange=function(on)Features.setESP(on)end});lo+=1
-    createToggle({title="Box ESP",desc="Draw boxes around enemies",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.Box=on;Features.setESPSetting("Box",on)end});lo+=1
-    createToggle({title="Filled Box",desc="Fill the ESP boxes",layoutOrder=lo,default=false,onChange=function(on)Features.espSettings.BoxFilled=on;Features.setESPSetting("BoxFilled",on)end});lo+=1
-    createToggle({title="Name ESP",desc="Show enemy names",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.Name=on;Features.setESPSetting("Name",on)end});lo+=1
-    createToggle({title="Distance ESP",desc="Show distance to enemies",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.Distance=on;Features.setESPSetting("Distance",on)end});lo+=1
-    createToggle({title="Team Check",desc="Only show enemies",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.TeamCheck=on;Features.setESPSetting("TeamCheck",on)end});lo+=1
+    createToggle({title="Box ESP",desc="Draw boxes around enemies",layoutOrder=lo,default=s.Box,onChange=function(on)s.Box=on;Features.setESPSetting("Box",on)end});lo+=1
+    createToggle({title="Filled Box",desc="Fill the ESP boxes",layoutOrder=lo,default=s.BoxFilled,onChange=function(on)s.BoxFilled=on;Features.setESPSetting("BoxFilled",on)end});lo+=1
+    createToggle({title="Name ESP",desc="Show enemy names",layoutOrder=lo,default=s.Name,onChange=function(on)s.Name=on;Features.setESPSetting("Name",on)end});lo+=1
+    createToggle({title="Distance ESP",desc="Show distance to enemies",layoutOrder=lo,default=s.Distance,onChange=function(on)s.Distance=on;Features.setESPSetting("Distance",on)end});lo+=1
+    createToggle({title="Team Check",desc="Only show enemies",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on;Features.setESPSetting("TeamCheck",on)end});lo+=1
 end
 
 local function renderUnlockAll()
