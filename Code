@@ -1,0 +1,862 @@
+--[[
+    Bosco Hub V1 — LocalScript (PC)
+    Made by Bosco
+    RightShift / RightCtrl → open/close menu
+]]
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local Workspace = game:GetService("Workspace")
+local CollectionService = game:GetService("CollectionService")
+
+local LP = Players.LocalPlayer
+local PGui = LP:WaitForChild("PlayerGui")
+local Camera = Workspace.CurrentCamera
+
+-- TEAM CHECK
+local Teammates = {}
+LP.CharacterAdded:Connect(function(char)
+    task.wait(0.3)
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    Teammates = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LP and player.Character then
+            local otherRoot = player.Character:FindFirstChild("HumanoidRootPart")
+            if otherRoot then
+                if (root.Position - otherRoot.Position).Magnitude <= 96.7 then
+                    Teammates[player.UserId] = true
+                end
+            end
+        end
+    end
+end)
+local function isTeammate(player)
+    if not player then return false end
+    return Teammates[player.UserId] == true
+end
+
+-- UTILITY
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+rayParams.IgnoreWater = true
+local function isTargetVisible(origin, targetPos, targetPlayerObj)
+    local ignoreList = {LP.Character}
+    if targetPlayerObj and targetPlayerObj.Character then table.insert(ignoreList, targetPlayerObj.Character) end
+    rayParams.FilterDescendantsInstances = ignoreList
+    local dir = (targetPos - origin)
+    if dir.Magnitude <= 0 then return true end
+    local result = Workspace:Raycast(origin, dir.Unit * dir.Magnitude, rayParams)
+    if not result then return true end
+    local hit = result.Instance
+    local isSmoke = hit.Transparency > 0.5 or not hit.CanCollide or hit.Name:lower():find("smoke") or hit.Name:lower():find("effect") or hit.Name:lower():find("particle")
+    if not isSmoke and hit.Parent then isSmoke = hit.Parent.Name:lower():find("smoke") or hit.Parent.Name:lower():find("grenade") end
+    if isSmoke then
+        local newIgnoreList = {}
+        for _, v in ipairs(ignoreList) do table.insert(newIgnoreList, v) end
+        table.insert(newIgnoreList, hit)
+        rayParams.FilterDescendantsInstances = newIgnoreList
+        local newOrigin = result.Position + dir.Unit * 0.1
+        local newDist = (targetPos - newOrigin).Magnitude
+        if newDist <= 0 then return true end
+        return Workspace:Raycast(newOrigin, dir.Unit * newDist, rayParams) == nil
+    end
+    return false
+end
+
+local Features = {}
+
+-- INFINITE JUMP
+Features.infiniteJumpEnabled = false
+Features.infiniteJumpPower = 50
+local jumpHeld, lastJump = false, 0
+local function getHum() local c = LP.Character; return c and c:FindFirstChildOfClass("Humanoid") end
+UIS.InputBegan:Connect(function(input) if input.KeyCode == Enum.KeyCode.Space then jumpHeld = true end end)
+UIS.InputEnded:Connect(function(input) if input.KeyCode == Enum.KeyCode.Space then jumpHeld = false end end)
+RunService.RenderStepped:Connect(function()
+    if not Features.infiniteJumpEnabled or not jumpHeld then return end
+    local hum = getHum()
+    if not hum or hum.FloorMaterial ~= Enum.Material.Air then return end
+    if tick() - lastJump < 0.1 then return end
+    hum.JumpPower = Features.infiniteJumpPower
+    hum.Jump = true
+    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    lastJump = tick()
+end)
+function Features.setInfiniteJump(on) Features.infiniteJumpEnabled = on end
+LP.CharacterAdded:Connect(function() task.wait(0.2); jumpHeld = false end)
+
+-- ESP
+Features.espEnabled = false
+Features.espSettings = { Box=true, BoxFilled=false, Name=true, Distance=true, TeamCheck=true }
+local espObjects, espLoop = {}, nil
+local function teamCol(p) return p.Team and p.Team.TeamColor.Color or Color3.fromRGB(255,60,60) end
+local function isEnemy(p) return not (Features.espSettings.TeamCheck and isTeammate(p)) end
+local function removeESP(p) local d = espObjects[p]; if d then if d.hl and d.hl.Parent then d.hl:Destroy() end; if d.bb and d.bb.Parent then d.bb:Destroy() end; espObjects[p] = nil end end
+local function removeAllESP() for p in pairs(espObjects) do removeESP(p) end end
+local function updateESP(p)
+    if p == LP then return end
+    local char = p.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart"); local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not Features.espEnabled or not char or not hrp or not hum or hum.Health <= 0 or not isEnemy(p) then removeESP(p); return end
+    local d = espObjects[p] or {}; espObjects[p] = d; local col = teamCol(p)
+    if Features.espSettings.Box or Features.espSettings.BoxFilled then
+        if not d.hl or not d.hl.Parent then local h = Instance.new("Highlight"); h.Name="BHESP"; h.Adornee=char; h.Parent=char; d.hl=h end
+        d.hl.OutlineColor=col; d.hl.FillColor=col; d.hl.OutlineTransparency=Features.espSettings.Box and 0 or 1; d.hl.FillTransparency=Features.espSettings.BoxFilled and 0.55 or 1; d.hl.Enabled=true
+    elseif d.hl then d.hl:Destroy(); d.hl=nil end
+    if Features.espSettings.Name or Features.espSettings.Distance then
+        if not d.bb or not d.bb.Parent then
+            local bb=Instance.new("BillboardGui"); bb.Name="BHBB"; bb.AlwaysOnTop=true; bb.Size=UDim2.fromOffset(130,44); bb.StudsOffset=Vector3.new(0,3.5,0); bb.Adornee=hrp; bb.Parent=hrp
+            local ul=Instance.new("UIListLayout"); ul.HorizontalAlignment=Enum.HorizontalAlignment.Center; ul.SortOrder=Enum.SortOrder.LayoutOrder; ul.Parent=bb
+            local nl=Instance.new("TextLabel"); nl.Name="NL"; nl.BackgroundTransparency=1; nl.Size=UDim2.new(1,0,0,18); nl.Font=Enum.Font.GothamBold; nl.TextSize=13; nl.TextStrokeTransparency=0.4; nl.LayoutOrder=1; nl.Parent=bb
+            local dl=Instance.new("TextLabel"); dl.Name="DL"; dl.BackgroundTransparency=1; dl.Size=UDim2.new(1,0,0,16); dl.Font=Enum.Font.Gotham; dl.TextSize=11; dl.TextStrokeTransparency=0.4; dl.LayoutOrder=2; dl.Parent=bb
+            d.bb=bb
+        end
+        local bb=d.bb; bb.Adornee=hrp; bb.Enabled=true
+        local nl=bb:FindFirstChild("NL"); if nl then nl.Visible=Features.espSettings.Name; if Features.espSettings.Name then nl.Text=p.DisplayName~="" and p.DisplayName or p.Name; nl.TextColor3=col end end
+        local dl=bb:FindFirstChild("DL"); if dl then dl.Visible=Features.espSettings.Distance; if Features.espSettings.Distance then dl.Text=math.floor((Camera.CFrame.Position-hrp.Position).Magnitude).." studs"; dl.TextColor3=Color3.fromRGB(220,220,220) end end
+    elseif d.bb then d.bb:Destroy(); d.bb=nil end
+end
+local function startESPLoop() if espLoop then return end; espLoop=RunService.RenderStepped:Connect(function() if not Features.espEnabled then return end; for _,p in ipairs(Players:GetPlayers()) do updateESP(p) end end) end
+local function stopESPLoop() if espLoop then espLoop:Disconnect(); espLoop=nil end end
+function Features.setESP(on) Features.espEnabled=on; if on then startESPLoop() else stopESPLoop(); removeAllESP() end end
+function Features.setESPSetting(k,v) Features.espSettings[k]=v; if Features.espEnabled then for _,p in ipairs(Players:GetPlayers()) do updateESP(p) end end end
+Players.PlayerRemoving:Connect(removeESP)
+LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
+
+-- SILENT AIM
+Features.silentAimEnabled = false
+Features.silentAimSettings = { FOV=300, MaxDistance=500, HitPart="Head", TeamCheck=true, ShowFOV=true }
+local silentAimHooked, originalRaycast, silentFovCircle = false, nil, nil
+local function setupSilentAim()
+    if silentAimHooked then return end
+    local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
+    if not modules then return end
+    local utility = modules:FindFirstChild("Utility")
+    if not utility then return end
+    local utilityModule = require(utility)
+    if not utilityModule or not utilityModule.Raycast then return end
+    originalRaycast = utilityModule.Raycast
+    utilityModule.Raycast = function(self, origin, direction, maxDistance, ...)
+        if not Features.silentAimEnabled or type(maxDistance) ~= "number" or maxDistance < 100 then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        local cam = Camera; if not cam then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        local mp = UIS:GetMouseLocation(); local center = Vector2.new(mp.X, mp.Y)
+        local bestPart, bestD = nil, Features.silentAimSettings.FOV
+        for _, entity in CollectionService:GetTagged("Entity") do
+            if entity == LP.Character then continue end
+            local player = Players:GetPlayerFromCharacter(entity)
+            if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
+            local hum = entity:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health <= 0 then continue end
+            local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
+            if not part or not part:IsA("BasePart") then continue end
+            if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
+            local sp, onScreen = cam:WorldToViewportPoint(part.Position)
+            if not onScreen then continue end
+            local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+            if d < bestD then bestD = d; bestPart = part end
+        end
+        if not bestPart then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        local targetPos = bestPart.Position
+        local dir = (targetPos - origin).Unit
+        local dist = (targetPos - origin).Magnitude
+        if dist > maxDistance then dist = maxDistance; targetPos = origin + (dir * maxDistance) end
+        return { Position=targetPos, Distance=dist, Instance=bestPart, Material=bestPart.Material, Normal=-dir }
+    end
+    silentAimHooked = true
+end
+function Features.setSilentAim(on) Features.silentAimEnabled = on; if on then setupSilentAim() end end
+RunService.RenderStepped:Connect(function()
+    if Features.silentAimEnabled and Features.silentAimSettings.ShowFOV then
+        if not silentFovCircle then silentFovCircle = Drawing.new("Circle"); silentFovCircle.Thickness = 1.2; silentFovCircle.NumSides = 100; silentFovCircle.Filled = false; silentFovCircle.ZIndex = 999; silentFovCircle.Transparency = 0.3; silentFovCircle.Color = Color3.fromRGB(100, 200, 255) end
+        silentFovCircle.Visible = true; silentFovCircle.Radius = Features.silentAimSettings.FOV
+        local mp = UIS:GetMouseLocation(); silentFovCircle.Position = Vector2.new(mp.X, mp.Y)
+    elseif silentFovCircle then silentFovCircle.Visible = false end
+end)
+
+-- AIMBOT
+Features.aimbotEnabled = false
+Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80 }
+local function getAdaptiveSpeed(baseSpeed)
+    local sens = UIS.MouseDeltaSensitivity or 0.5
+    local multiplier = 0.5 / math.max(sens, 0.01)
+    if Features.aimbotSettings.ADSEnabled and Features.aimbotSettings.RequireRightClick and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local adsVal = Features.aimbotSettings.ADSMultiplier or 100
+        multiplier = multiplier * (1 + (100 - adsVal) / 100)
+    end
+    return baseSpeed * multiplier
+end
+local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
+local function createTargetIndicator()
+    if targetIndicator then return end
+    targetIndicator=Instance.new("BillboardGui"); targetIndicator.Name="BHTarget"; targetIndicator.Size=UDim2.new(0,24,0,24); targetIndicator.AlwaysOnTop=true; targetIndicator.Enabled=false; targetIndicator.Parent=PGui
+    local f=Instance.new("Frame",targetIndicator); f.Size=UDim2.new(1,0,1,0); f.BackgroundColor3=Color3.fromRGB(255,50,50); f.BackgroundTransparency=0.3; f.BorderSizePixel=0; Instance.new("UICorner",f).CornerRadius=UDim.new(1,0)
+end
+local function updateFOVCircle()
+    if not Features.aimbotSettings.ShowFOV then if fovCircle then fovCircle.Visible=false end; return end
+    if not fovCircle then fovCircle=Drawing.new("Circle"); fovCircle.Thickness=1.2; fovCircle.NumSides=100; fovCircle.Filled=false; fovCircle.ZIndex=999; fovCircle.Transparency=0.3 end
+    fovCircle.Visible=true; fovCircle.Radius=Features.aimbotSettings.FOV
+    local mp=UIS:GetMouseLocation(); fovCircle.Position=Vector2.new(mp.X,mp.Y)
+    fovCircle.Color=lockedTarget and Color3.fromRGB(100,255,100) or Color3.fromRGB(255,255,255)
+end
+local function isValidTarget(part) if not part or not part.Parent then return false end; local h=part.Parent:FindFirstChildOfClass("Humanoid"); return h and h.Health>0 and not part.Parent:FindFirstChildOfClass("ForceField") end
+local function getPredictedPosition(part)
+    local pos = part.Position
+    if not Features.aimbotSettings.Prediction then return pos end
+    local vel = part.AssemblyLinearVelocity
+    if vel.Magnitude < 0.5 then return pos end
+    local cam = Camera; if not cam then return pos end
+    local distance = (cam.CFrame.Position - pos).Magnitude; local bulletSpeed = 450
+    local char = LP.Character
+    if char then local tool = char:FindFirstChildOfClass("Tool")
+        if tool then local config = tool:FindFirstChild("Configuration") or tool:FindFirstChild("Stats")
+            if config then local bs = config:FindFirstChild("BulletSpeed") or config:FindFirstChild("ProjectileSpeed") or config:FindFirstChild("Velocity")
+                if bs and bs.Value then bulletSpeed = bs.Value end
+            end
+        end
+    end
+    local timeToTarget = distance / bulletSpeed; local predictedPos = pos + (vel * timeToTarget * 0.5)
+    local maxLead = distance * 0.1; local lead = (predictedPos - pos).Magnitude
+    if lead > maxLead then predictedPos = pos + (predictedPos - pos).Unit * maxLead end
+    return pos:Lerp(predictedPos, 0.85)
+end
+local function getBestTarget()
+    local cam=Camera; if not cam then return nil,nil,nil end
+    local mp=UIS:GetMouseLocation(); local fovCenter=Vector2.new(mp.X,mp.Y); local s=Features.aimbotSettings; local now=tick()
+    if s.StickyAim and lockedTarget and isValidTarget(lockedTarget) and now-lockTime<s.StickyTime then
+        local tPlayer=Players:GetPlayerFromCharacter(lockedTarget.Parent)
+        if not (s.TeamCheck and isTeammate(tPlayer)) then
+            local aimPos=getPredictedPosition(lockedTarget)
+            if (cam.CFrame.Position-aimPos).Magnitude<=s.MaxDistance then
+                local sp,on=cam:WorldToViewportPoint(aimPos)
+                if on and sp.Z>0 and (Vector2.new(sp.X,sp.Y)-fovCenter).Magnitude<=s.FOV*1.3 then
+                    if isTargetVisible(cam.CFrame.Position,aimPos,tPlayer) then targetPlayer=tPlayer; return lockedTarget,Vector2.new(sp.X,sp.Y),tPlayer end
+                end
+            end
+        end
+        lockedTarget=nil; targetPlayer=nil
+    end
+    local candidates={}
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p==LP then continue end
+        if s.TeamCheck and isTeammate(p) then continue end
+        local char=p.Character; if not char then continue end
+        local part=char:FindFirstChild(s.TargetPart) or char:FindFirstChild("HumanoidRootPart")
+        if not part or not isValidTarget(part) then continue end
+        local aimPos=getPredictedPosition(part)
+        if (cam.CFrame.Position-aimPos).Magnitude>s.MaxDistance then continue end
+        local sp,on=cam:WorldToViewportPoint(aimPos)
+        if not on or sp.Z<=0 then continue end
+        local screenPos=Vector2.new(sp.X,sp.Y); local d=(screenPos-fovCenter).Magnitude
+        if d>s.FOV then continue end
+        if not isTargetVisible(cam.CFrame.Position,aimPos,p) then continue end
+        local hum=char:FindFirstChildOfClass("Humanoid")
+        table.insert(candidates,{part=part,player=p,screenPos=screenPos,dist2D=d,dist3D=(cam.CFrame.Position-aimPos).Magnitude,health=hum and hum.Health or 100})
+    end
+    if #candidates==0 then return nil,nil,nil end
+    table.sort(candidates,function(a,b)
+        if s.TargetPriority=="FOV" then return a.dist2D<b.dist2D
+        elseif s.TargetPriority=="Distance" then return a.dist3D<b.dist3D
+        elseif s.TargetPriority=="Health" then return a.health<b.health end
+        return a.dist2D<b.dist2D
+    end)
+    local best=candidates[1]; lockedTarget=best.part; targetPlayer=best.player; lockTime=now
+    return best.part,best.screenPos,best.player
+end
+local function moveMouseToTarget(targetScreenPos,overrideSpeed)
+    local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local delta=targetScreenPos-cm; local dist=delta.Magnitude
+    if dist<2 then return true end
+    local speed = getAdaptiveSpeed(overrideSpeed or Features.aimbotSettings.AimSpeed)
+    local snapPercent = math.clamp((speed / 50) ^ 1.5, 0, 2); local moveAmount = dist * snapPercent * 0.95
+    moveAmount = math.max(moveAmount, dist * 0.002); moveAmount = math.min(moveAmount, dist * 0.95)
+    local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
+    return false
+end
+local function handleAutoFire(targetScreenPos)
+    if not Features.aimbotSettings.AutoFire then onTargetTime=nil; return end
+    local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local dist=(cm-targetScreenPos).Magnitude; local now=tick()
+    if dist<20 then
+        if not onTargetTime then onTargetTime=now end
+        if now-onTargetTime >= Features.aimbotSettings.AutoFireDelay then
+            if Features.aimbotSettings.AutoFireHold then mouse1press() else mouse1press(); task.wait(0.01); mouse1release(); onTargetTime=now end
+        end
+    else onTargetTime=nil; if Features.aimbotSettings.AutoFireHold then mouse1release() end end
+end
+local function aimbotRenderStep()
+    if not Features.aimbotEnabled then if fovCircle then fovCircle.Visible=false end; return end
+    updateFOVCircle()
+    if Features.aimbotSettings.RequireRightClick and not UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        lockedTarget=nil; targetPlayer=nil; onTargetTime=nil
+        if targetIndicator then targetIndicator.Enabled=false end; return
+    end
+    local targetPart,targetScreenPos=getBestTarget()
+    if targetPart and targetPart.Parent then
+        if not targetIndicator then createTargetIndicator() end
+        if targetIndicator then targetIndicator.Enabled=true; targetIndicator.Adornee=targetPart end
+    elseif targetIndicator then targetIndicator.Enabled=false end
+    if not targetScreenPos then return end
+    moveMouseToTarget(targetScreenPos); handleAutoFire(targetScreenPos)
+end
+local function startAimbotLoop() if aimbotConnection then return end; aimbotConnection=RunService.RenderStepped:Connect(aimbotRenderStep) end
+local function stopAimbotLoop() if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection=nil end; lockedTarget=nil; targetPlayer=nil; onTargetTime=nil; mouse1release(); if fovCircle then fovCircle.Visible=false end; if targetIndicator then targetIndicator.Enabled=false end end
+function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbotLoop() else stopAimbotLoop() end end
+
+-- FLICK
+Features.flickEnabled = false
+Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ReturnDelay=0.01, ShowFOV=true }
+local isFlicking, flickFovCircle = false, nil
+local function updateFlickFOV()
+    if not Features.flickSettings.ShowFOV then if flickFovCircle then flickFovCircle.Visible=false end; return end
+    if not flickFovCircle then flickFovCircle=Drawing.new("Circle"); flickFovCircle.Thickness=1.2; flickFovCircle.NumSides=100; flickFovCircle.Filled=false; flickFovCircle.ZIndex=999; flickFovCircle.Transparency=0.3 end
+    flickFovCircle.Visible=true; flickFovCircle.Radius=Features.flickSettings.FOV
+    local mp=UIS:GetMouseLocation(); flickFovCircle.Position=Vector2.new(mp.X,mp.Y); flickFovCircle.Color=Color3.fromRGB(255,200,50)
+end
+local function doFlick()
+    if isFlicking then return end; isFlicking=true
+    local savedMouseBehavior = UIS.MouseBehavior; UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+    local mx,my=UIS:GetMouseLocation().X,UIS:GetMouseLocation().Y; local totalDX,totalDY=0,0
+    local targetHead=nil; local cam=Camera
+    if cam then
+        local bestD=Features.flickSettings.FOV
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p==LP then continue end
+            if Features.flickSettings.TeamCheck and isTeammate(p) then continue end
+            local char=p.Character; if not char then continue end
+            local head=char:FindFirstChild("Head"); if not head then continue end
+            local hum=char:FindFirstChildOfClass("Humanoid"); if hum and hum.Health<=0 then continue end
+            if (cam.CFrame.Position-head.Position).Magnitude>Features.flickSettings.MaxDistance then continue end
+            if Features.flickSettings.WallCheck and not isTargetVisible(cam.CFrame.Position,head.Position,p) then continue end
+            local sp,on=cam:WorldToViewportPoint(head.Position)
+            if on then local d=math.sqrt((sp.X-mx)^2+(sp.Y-my)^2)
+                if d<bestD then bestD=d; targetHead=head end
+            end
+        end
+    end
+    if not targetHead then UIS.MouseBehavior=savedMouseBehavior; isFlicking=false; return end
+    local sp,on=cam:WorldToViewportPoint(targetHead.Position)
+    if not on then UIS.MouseBehavior=savedMouseBehavior; isFlicking=false; return end
+    local dx,dy=sp.X-mx,sp.Y-my; local stepX,stepY=dx/4,dy/4
+    local m1X,m1Y=stepX*2,stepY*2; mousemoverel(m1X,m1Y); totalDX=totalDX+m1X; totalDY=totalDY+m1Y; task.wait(0.005)
+    mousemoverel(m1X,m1Y); totalDX=totalDX+m1X; totalDY=totalDY+m1Y; task.wait(0.005)
+    local m2X,m2Y=stepX*0.6,stepY*0.6; mousemoverel(m2X,m2Y); totalDX=totalDX+m2X; totalDY=totalDY+m2Y; task.wait(0.008)
+    local wasSilent=Features.silentAimEnabled; Features.silentAimEnabled=true; mouse1press()
+    mousemoverel(-totalDX*0.9,-totalDY*0.9); task.wait(0.003)
+    mousemoverel(-totalDX*0.1,-totalDY*0.1); task.wait(0.005)
+    mouse1release(); Features.silentAimEnabled=wasSilent
+    UIS.MouseBehavior=savedMouseBehavior; isFlicking=false
+end
+RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
+
+-- UNLOCK ALL + SKIN CHANGER
+Features.unlockAllEnabled = false
+Features.skinChangerEnabled = false
+local unlockRan, skinChangerLoaded = false, false
+local function runUnlockAll()
+    if unlockRan then return end; unlockRan = true; task.wait(3)
+    pcall(function() loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))() end)
+end
+local function runSkinChanger()
+    if skinChangerLoaded then return end; skinChangerLoaded = true
+    pcall(function() loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))() end)
+    if queue_on_teleport then queue_on_teleport([[loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))()]]) end
+end
+function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then unlockRan = false; runUnlockAll() end end
+function Features.setSkinChanger(on) Features.skinChangerEnabled = on; if on then skinChangerLoaded = false; runSkinChanger() end end
+LP.CharacterAdded:Connect(function() if Features.skinChangerEnabled then skinChangerLoaded = false; runSkinChanger() end end)
+
+-- KEYBINDS
+local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
+local function keyName(kc) if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
+
+-- CONFIG SYSTEM
+local configFileName = "BoscoHub_Configs.json"
+local function getAllConfigs()
+    if not isfile or not readfile then return {} end
+    if not isfile(configFileName) then return {} end
+    local s, d = pcall(function() return HttpService:JSONDecode(readfile(configFileName)) end)
+    return (s and type(d)=="table") and d or {}
+end
+local function saveConfigsToFile(configs) if writefile then pcall(function() writefile(configFileName, HttpService:JSONEncode(configs)) end) end end
+local function saveConfig(name, overwrite)
+    local configs = getAllConfigs()
+    if configs[name] and not overwrite then return false, "Config exists!" end
+    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, keybinds=Keybinds }
+    saveConfigsToFile(configs); return true, "Saved!"
+end
+local function loadConfig(name)
+    local configs = getAllConfigs(); local data = configs[name]
+    if not data then return false, "Not found!" end
+    if data.esp ~= nil then Features.setESP(data.esp) end
+    if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v end end
+    if data.aimbot ~= nil then Features.setAimbot(data.aimbot) end
+    if data.aimbotSettings then for k, v in pairs(data.aimbotSettings) do Features.aimbotSettings[k] = v end end
+    if data.silentAim ~= nil then Features.setSilentAim(data.silentAim) end
+    if data.silentAimSettings then for k, v in pairs(data.silentAimSettings) do Features.silentAimSettings[k] = v end end
+    if data.infiniteJump ~= nil then Features.setInfiniteJump(data.infiniteJump) end
+    if data.flick ~= nil then Features.flickEnabled = data.flick end
+    if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
+    if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end
+    if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end
+    if data.keybinds then for k, v in pairs(data.keybinds) do Keybinds[k] = v end end
+    return true, "Loaded!"
+end
+local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
+
+-- Auto-save current settings
+local function autoSave() local c = getAllConfigs(); c["__current"] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled }; saveConfigsToFile(c) end
+
+-- Auto-load last settings
+task.wait(1)
+local saved = getAllConfigs()
+if saved["__current"] then
+    local s = saved["__current"]
+    if s.aimbot ~= nil then Features.setAimbot(s.aimbot) end
+    if s.silentAim ~= nil then Features.setSilentAim(s.silentAim) end
+    if s.esp ~= nil then Features.setESP(s.esp) end
+    if s.infiniteJump ~= nil then Features.setInfiniteJump(s.infiniteJump) end
+    if s.flick ~= nil then Features.flickEnabled = s.flick end
+    if s.unlockAll ~= nil then Features.setUnlockAll(s.unlockAll) end
+    if s.skinChanger ~= nil then Features.setSkinChanger(s.skinChanger) end
+end
+if saved["__autoLoadEnabled"] and saved["__autoLoad"] then loadConfig(saved["__autoLoad"]) end
+
+-- Save periodically
+task.spawn(function() while true do task.wait(5); pcall(autoSave) end end)
+
+-- Auto execute on teleport
+if queue_on_teleport then queue_on_teleport([[loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()]]) end
+
+-- ═══════════════════════════════════════════════════════
+--  UI
+-- ═══════════════════════════════════════════════════════
+for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
+
+local C={bg=Color3.fromRGB(4,0,8),panel=Color3.fromRGB(10,2,16),row=Color3.fromRGB(16,4,22),sidebarBg=Color3.fromRGB(6,0,12),topBar=Color3.fromRGB(8,0,14),accent=Color3.fromRGB(140,30,255),accentBrt=Color3.fromRGB(180,80,255),accent2=Color3.fromRGB(255,60,120),activeDim=Color3.fromRGB(40,8,60),sep=Color3.fromRGB(100,20,160),text=Color3.fromRGB(255,255,255),textDim=Color3.fromRGB(170,130,200),sliderTrack=Color3.fromRGB(25,5,40),toggleOff=Color3.fromRGB(25,25,40)}
+local FONT=Enum.Font.Gotham;local FONT_MED=Enum.Font.GothamMedium;local FONT_BOL=Enum.Font.GothamBold
+local CR=UDim.new(0,8);local CR_SM=UDim.new(0,6);local CR_XL=UDim.new(0,14)
+
+local function mkCorner(p,r)local c=Instance.new("UICorner");c.CornerRadius=r or CR;c.Parent=p;return c end
+local function mkStroke(p,col,tr,th)local s=Instance.new("UIStroke");s.Color=col or C.sep;s.Transparency=tr or 0.5;s.Thickness=th or 1;s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;s.Parent=p;return s end
+local function mkPad(p,t,r,b,l)local x=Instance.new("UIPadding");x.PaddingTop=UDim.new(0,t or 12);x.PaddingRight=UDim.new(0,r or 12);x.PaddingBottom=UDim.new(0,b or 12);x.PaddingLeft=UDim.new(0,l or 12);x.Parent=p;return x end
+local function mkGradient(p,c1,c2)local g=Instance.new("UIGradient");g.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,c1 or C.accent),ColorSequenceKeypoint.new(1,c2 or C.accentBrt)});g.Parent=p;return g end
+local function mkLabel(props)local l=Instance.new("TextLabel");l.Name=props.Name or"Lbl";l.BackgroundTransparency=1;l.Font=props.Font or FONT;l.TextSize=props.TextSize or 13;l.TextColor3=props.TextColor or C.text;l.Text=props.Text or"";l.TextXAlignment=props.TextXAlignment or Enum.TextXAlignment.Left;l.TextYAlignment=Enum.TextYAlignment.Center;if props.Size then l.Size=props.Size end;if props.Position then l.Position=props.Position end;if props.LayoutOrder then l.LayoutOrder=props.LayoutOrder end;l.Parent=props.Parent;return l end
+local function mkSep(parent,lo)local l=Instance.new("Frame");l.Name="Sep";l.Size=UDim2.new(1,0,0,1);l.BackgroundColor3=C.sep;l.BackgroundTransparency=0.4;l.BorderSizePixel=0;l.LayoutOrder=lo or 0;l.Parent=parent;return l end
+
+local gui=Instance.new("ScreenGui");gui.Name="BoscoHub";gui.ResetOnSpawn=false;gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;gui.IgnoreGuiInset=true;gui.DisplayOrder=100;gui.Parent=PGui
+
+local function showToast(msg)
+    local t=gui:FindFirstChild("Toast");if t then t:Destroy()end
+    local toast=Instance.new("Frame");toast.Name="Toast";toast.BackgroundColor3=C.panel;toast.BorderSizePixel=0;toast.Size=UDim2.fromOffset(370,40);toast.Position=UDim2.new(0.5,0,1,-65);toast.AnchorPoint=Vector2.new(0.5,1);toast.ZIndex=200;toast.Parent=gui
+    mkCorner(toast,CR);mkStroke(toast,C.accent,0,1.5);mkGradient(toast,C.accent,C.accent2)
+    mkLabel({Parent=toast,Text=msg,TextSize=12,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.fromScale(1,1)})
+    task.delay(2.5,function()if toast.Parent then toast:Destroy()end end)
+end
+
+local root=Instance.new("Frame");root.Name="Root";root.BackgroundColor3=C.bg;root.BorderSizePixel=0;root.Size=UDim2.new(0,880,0,540)
+root.Position=UDim2.new(0.5,0,0.5,0);root.AnchorPoint=Vector2.new(0.5,0.5);root.ClipsDescendants=true;root.ZIndex=999;root.Visible=false;root.Parent=gui
+mkCorner(root,CR_XL);mkStroke(root,C.accent,0,2);mkGradient(root,C.bg,Color3.fromRGB(8,0,20))
+
+local topBar=Instance.new("Frame");topBar.Name="TopBar";topBar.BackgroundColor3=C.topBar;topBar.BorderSizePixel=0;topBar.Size=UDim2.new(1,0,0,48);topBar.ZIndex=10;topBar.Parent=root
+mkCorner(topBar,UDim.new(0,14))
+local tbBorder=Instance.new("Frame");tbBorder.Size=UDim2.new(1,0,0,2);tbBorder.Position=UDim2.new(0,0,1,-2);tbBorder.BackgroundColor3=C.accent;tbBorder.BorderSizePixel=0;tbBorder.ZIndex=11;tbBorder.Parent=topBar;mkGradient(tbBorder,C.accent,C.accent2)
+mkPad(topBar,0,16,0,16)
+
+local dragging,dragStart,dragOrigin=false,nil,nil
+topBar.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true;dragStart=i.Position;dragOrigin=root.Position;i.Changed:Connect(function()if i.UserInputState==Enum.UserInputState.End then dragging=false end end)end end)
+UIS.InputChanged:Connect(function(i)if dragging and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then local d=i.Position-dragStart;root.Position=UDim2.new(dragOrigin.X.Scale,dragOrigin.X.Offset+d.X,dragOrigin.Y.Scale,dragOrigin.Y.Offset+d.Y)end end)
+
+local wCtrl=Instance.new("Frame");wCtrl.BackgroundTransparency=1;wCtrl.Size=UDim2.fromOffset(60,16);wCtrl.Parent=topBar
+local wl=Instance.new("UIListLayout");wl.FillDirection=Enum.FillDirection.Horizontal;wl.Padding=UDim.new(0,7);wl.VerticalAlignment=Enum.VerticalAlignment.Center;wl.Parent=wCtrl
+local winClose,winMin
+for i,col in ipairs({Color3.fromRGB(255,70,70),Color3.fromRGB(255,180,50),Color3.fromRGB(60,220,80)})do local d=Instance.new("TextButton");d.Size=UDim2.fromOffset(14,14);d.BackgroundColor3=col;d.Text="";d.AutoButtonColor=false;mkCorner(d,UDim.new(1,0));d.Parent=wCtrl;if i==1 then winClose=d elseif i==2 then winMin=d end end
+
+local titleLabel=Instance.new("TextLabel");titleLabel.BackgroundTransparency=1;titleLabel.Text="BOSCO HUB V1";titleLabel.Font=FONT_BOL;titleLabel.TextSize=14;titleLabel.TextColor3=C.accentBrt;titleLabel.TextXAlignment=Enum.TextXAlignment.Center;titleLabel.Size=UDim2.new(1,-120,1,0);titleLabel.Position=UDim2.new(0,60,0,0);titleLabel.Parent=topBar
+
+local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Name="Body";body.Size=UDim2.new(1,0,1,-48);body.Position=UDim2.fromOffset(0,48);body.ZIndex=4;body.Parent=root
+local SW=200
+local sidebar=Instance.new("Frame");sidebar.BackgroundColor3=C.sidebarBg;sidebar.BorderSizePixel=0;sidebar.Size=UDim2.new(0,SW,1,0);sidebar.ZIndex=5;sidebar.Parent=body
+local sbLine=Instance.new("Frame");sbLine.Size=UDim2.new(0,2,1,0);sbLine.Position=UDim2.new(1,-2,0,0);sbLine.BackgroundColor3=C.accent;sbLine.BorderSizePixel=0;sbLine.Parent=sidebar;mkGradient(sbLine,C.accent,C.accent2)
+local sbScroll=Instance.new("ScrollingFrame");sbScroll.BackgroundTransparency=1;sbScroll.BorderSizePixel=0;sbScroll.Size=UDim2.fromScale(1,1);sbScroll.CanvasSize=UDim2.new(0,0,0,0);sbScroll.ScrollBarThickness=3;sbScroll.ScrollBarImageColor3=C.accent;sbScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;sbScroll.Parent=sidebar
+mkPad(sbScroll,12,10,12,10)
+local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,4);sbLL.SortOrder=Enum.SortOrder.LayoutOrder;sbLL.Parent=sbScroll
+
+local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,90);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
+local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,4);brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
+mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=22,TextColor=C.accentBrt,Size=UDim2.new(1,0,0,30),LayoutOrder=1})
+mkLabel({Parent=brandBlock,Text="V1",Font=FONT_BOL,TextSize=14,TextColor=C.accent2,Size=UDim2.new(1,0,0,22),LayoutOrder=2})
+mkLabel({Parent=brandBlock,Text="by Bosco",Font=FONT,TextSize=10,TextColor=C.textDim,Size=UDim2.new(1,0,0,24),LayoutOrder=3})
+
+local navBtns={};local activeNav=nil
+local function setNavActive(btn)if activeNav then activeNav.BackgroundColor3=Color3.fromRGB(0,0,0);activeNav.BackgroundTransparency=1;activeNav.TextColor3=C.textDim end;activeNav=btn;btn.BackgroundColor3=C.activeDim;btn.BackgroundTransparency=0;btn.TextColor3=C.accentBrt end
+local function mkNav(text,lo,onClick)local btn=Instance.new("TextButton");btn.Name=text:gsub(" ","");btn.LayoutOrder=lo;btn.Size=UDim2.new(1,0,0,32);btn.BackgroundColor3=Color3.fromRGB(0,0,0);btn.BackgroundTransparency=1;btn.Font=FONT_MED;btn.TextSize=12;btn.Text="  "..text;btn.TextColor3=C.textDim;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.sep,0.6,1);btn.Parent=sbScroll;navBtns[text]=btn;btn.MouseButton1Click:Connect(function()setNavActive(btn);if onClick then onClick()end end);return btn end
+local function mkNavHdr(text,lo)mkLabel({Parent=sbScroll,Text=text,Font=FONT_BOL,TextSize=9,TextColor=C.accent,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)})end
+
+local main=Instance.new("Frame");main.Name="Main";main.BackgroundColor3=C.panel;main.BorderSizePixel=0;main.Size=UDim2.new(1,-SW,1,0);main.Position=UDim2.fromOffset(SW,0);main.ZIndex=4;main.Parent=body
+mkCorner(main,UDim.new(0,8))
+local mainScroll=Instance.new("ScrollingFrame");mainScroll.BackgroundTransparency=1;mainScroll.BorderSizePixel=0;mainScroll.Size=UDim2.fromScale(1,1);mainScroll.CanvasSize=UDim2.new(0,0,0,0);mainScroll.ScrollBarThickness=3;mainScroll.ScrollBarImageColor3=C.accent;mainScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;mainScroll.Parent=main
+mkPad(mainScroll,18,18,18,18)
+local mainLL=Instance.new("UIListLayout");mainLL.Padding=UDim.new(0,12);mainLL.SortOrder=Enum.SortOrder.LayoutOrder;mainLL.Parent=mainScroll
+
+local function secHead(text,order)return mkLabel({Parent=mainScroll,Text=text:upper(),Font=FONT_BOL,TextSize=10,TextColor=C.accent,LayoutOrder=order,Size=UDim2.new(1,0,0,20)})end
+local function mkRow(title,lo,h)local f=Instance.new("Frame");f.Name=title;f.BackgroundColor3=C.row;f.BorderSizePixel=0;f.Size=UDim2.new(1,0,0,h or 54);f.LayoutOrder=lo;f.Parent=mainScroll;mkCorner(f,CR);mkStroke(f,C.sep,0.4,1);mkPad(f,12,14,12,14);return f end
+
+local function clearContent()
+    local toRemove = {}
+    for _, ch in ipairs(mainScroll:GetChildren()) do
+        if ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton") or ch:IsA("TextBox") or ch:IsA("ScrollingFrame") then
+            table.insert(toRemove, ch)
+        end
+    end
+    for _, ch in ipairs(toRemove) do ch:Destroy() end
+    mainScroll.CanvasPosition = Vector2.zero
+end
+
+local function createToggle(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-56,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,16)})
+    local track=Instance.new("TextButton");track.AnchorPoint=Vector2.new(1,0.5);track.Position=UDim2.new(1,0,0.5,0);track.Size=UDim2.fromOffset(48,24);track.Text="";track.AutoButtonColor=false;mkCorner(track,UDim.new(1,0));track.Parent=row
+    local knob=Instance.new("Frame");knob.Size=UDim2.fromOffset(18,18);knob.BorderSizePixel=0;mkCorner(knob,UDim.new(1,0));knob.Parent=track
+    local on=props.default==true
+    local function paint()for _,v in ipairs(track:GetChildren())do if v:IsA("UIGradient")then v:Destroy()end end;if on then mkGradient(track,C.accent,C.accentBrt);knob.Position=UDim2.new(1,-22,0.5,-9);knob.BackgroundColor3=Color3.fromRGB(255,255,255)else track.BackgroundColor3=C.toggleOff;knob.Position=UDim2.new(0,4,0.5,-9);knob.BackgroundColor3=Color3.fromRGB(180,180,200)end end
+    paint()
+    track.MouseButton1Click:Connect(function()on=not on;paint();TweenService:Create(knob,TweenInfo.new(0.15,Enum.EasingStyle.Quad),{Position=on and UDim2.new(1,-22,0.5,-9)or UDim2.new(0,4,0.5,-9)}):Play();if props.onChange then props.onChange(on)end end)
+    return row
+end
+
+local function createDualSlider(props)
+    local row=mkRow(props.title,props.layoutOrder,76)
+    mkLabel({Parent=row,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local textBox=Instance.new("TextBox");textBox.Size=UDim2.fromOffset(55,22);textBox.Position=UDim2.new(1,-55,0,0);textBox.BackgroundColor3=C.activeDim;textBox.TextColor3=C.text;textBox.Font=FONT_MED;textBox.TextSize=12;textBox.Text=tostring(props.default);mkCorner(textBox,CR_SM);mkStroke(textBox,C.accent,0,1);textBox.Parent=row
+    if props.desc then mkLabel({Parent=row,Text=props.desc,TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})end
+    local trk=Instance.new("Frame");trk.BackgroundColor3=C.sliderTrack;trk.Position=UDim2.fromOffset(0,44);trk.Size=UDim2.new(1,0,0,7);mkCorner(trk,UDim.new(1,0));trk.Parent=row
+    local fill=Instance.new("Frame");fill.Size=UDim2.fromScale(0.5,1);mkCorner(fill,UDim.new(1,0));fill.Parent=trk;mkGradient(fill,C.accent,C.accentBrt)
+    local hit=Instance.new("TextButton");hit.BackgroundTransparency=1;hit.Text="";hit.Size=UDim2.new(1,0,0,22);hit.Position=UDim2.fromOffset(0,36);hit.Parent=row
+    mkLabel({Parent=row,Text=tostring(props.min),TextSize=9,TextColor=C.textDim,Position=UDim2.fromOffset(0,56),Size=UDim2.fromOffset(30,14)})
+    mkLabel({Parent=row,Text=tostring(props.max),TextSize=9,TextColor=C.textDim,Position=UDim2.new(1,-30,0,56),Size=UDim2.fromOffset(30,14),TextXAlignment=Enum.TextXAlignment.Right})
+    local function updateValue(value)value=math.clamp(tonumber(value)or props.default,props.min,props.max);fill.Size=UDim2.fromScale((value-props.min)/(props.max-props.min),1);textBox.Text=tostring(math.floor(value*100)/100);if props.onChange then props.onChange(value)end end
+    local drag=false
+    hit.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=true;updateValue(props.min+((i.Position.X-trk.AbsolutePosition.X)/trk.AbsoluteSize.X)*(props.max-props.min))end end)
+    UIS.InputChanged:Connect(function(i)if drag then updateValue(props.min+((i.Position.X-trk.AbsolutePosition.X)/trk.AbsoluteSize.X)*(props.max-props.min))end end)
+    UIS.InputEnded:Connect(function()drag=false end)
+    textBox.FocusLost:Connect(function(ep)if ep then updateValue(tonumber(textBox.Text))end end)
+    updateValue(props.default)
+    return row
+end
+
+local function createCycleButton(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    mkLabel({Parent=row,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.6,0,0,18)})
+    mkLabel({Parent=row,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,14)})
+    local opts=props.options or{};local currentIndex=1
+    for i,o in ipairs(opts)do if o==props.default then currentIndex=i;break end end
+    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(120,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT;btn.TextSize=12;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";btn.TextColor3=C.accentBrt;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row
+    btn.MouseButton1Click:Connect(function()currentIndex=currentIndex+1;if currentIndex>#opts then currentIndex=1 end;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";if props.onChange then props.onChange(opts[currentIndex])end end)
+    return row
+end
+
+local function createActionRow(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-92,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,16)})
+    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(82,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT_MED;btn.TextSize=12;btn.Text=props.buttonText;btn.TextColor3=C.text;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row;mkGradient(btn,C.accent,Color3.fromRGB(100,20,200))
+    btn.MouseButton1Click:Connect(function()if props.onClick then props.onClick()end end)
+    return row
+end
+
+local listeningFor=nil;local kbBtns={}
+local function createKeybindRow(props)
+    local id=props.id;local bind=Keybinds[id]
+    local row=mkRow(bind.label,props.layoutOrder,54);row.Name=id
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-196,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=bind.label,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Name="CK",Text="Key: "..keyName(bind.key),TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,21),Size=UDim2.new(1,0,0,16)})
+    local hb=Instance.new("TextButton");hb.AnchorPoint=Vector2.new(1,0.5);hb.Position=UDim2.new(1,0,0.5,0);hb.Size=UDim2.fromOffset(72,26);hb.Font=FONT;hb.TextSize=11;hb.Text=bind.holdMode and"HOLD"or"TOGGLE";hb.BackgroundColor3=bind.holdMode and C.accent or Color3.fromRGB(35,8,50);hb.TextColor3=C.text;hb.AutoButtonColor=false;mkCorner(hb,CR_SM);hb.Parent=row;if bind.holdMode then mkGradient(hb,C.accent,C.accentBrt)end
+    hb.MouseButton1Click:Connect(function()bind.holdMode=not bind.holdMode;hb.Text=bind.holdMode and"HOLD"or"TOGGLE";hb.BackgroundColor3=bind.holdMode and C.accent or Color3.fromRGB(35,8,50)end)
+    local kb=Instance.new("TextButton");kb.AnchorPoint=Vector2.new(1,0.5);kb.Position=UDim2.new(1,-80,0.5,0);kb.Size=UDim2.fromOffset(72,26);kb.Font=FONT_MED;kb.TextSize=12;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35);kb.TextColor3=C.text;kb.AutoButtonColor=false;mkCorner(kb,CR_SM);mkStroke(kb,C.accent,0,1);kb.Parent=row;kbBtns[id]=kb
+    kb.MouseButton1Click:Connect(function()if listeningFor==id then listeningFor=nil;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35)else if listeningFor and kbBtns[listeningFor]then kbBtns[listeningFor].Text=keyName(Keybinds[listeningFor].key);kbBtns[listeningFor].BackgroundColor3=Color3.fromRGB(22,4,35)end;listeningFor=id;kb.Text="[press key]";kb.BackgroundColor3=C.activeDim end end)
+    return row
+end
+
+-- PAGES
+local function renderAimbot()
+    clearContent();local lo=1
+    secHead("🎯 Aimbot",lo);lo+=1
+    createToggle({title="Enable Aimbot",desc="Toggle aimbot on/off",layoutOrder=lo,default=Features.aimbotEnabled,onChange=function(on)Features.setAimbot(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Aimbot field of view",layoutOrder=lo,default=120,min=30,max=500,onChange=function(v)Features.aimbotSettings.FOV=v end});lo+=1
+    createDualSlider({title="Aim Speed",desc="Smoothness of aim",layoutOrder=lo,default=15,min=1,max=50,onChange=function(v)Features.aimbotSettings.AimSpeed=v end});lo+=1
+    createCycleButton({title="Target Part",desc="Body part to aim at",layoutOrder=lo,default="Head",options={"Head","HumanoidRootPart","UpperTorso","LowerTorso"},onChange=function(v)Features.aimbotSettings.TargetPart=v end});lo+=1
+    createCycleButton({title="Priority",desc="Target selection priority",layoutOrder=lo,default="FOV",options={"FOV","Distance","Health"},onChange=function(v)Features.aimbotSettings.TargetPriority=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only target visible enemies",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Ignore teammates",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.TeamCheck=on end});lo+=1
+    createToggle({title="Prediction",desc="Predict enemy movement",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.Prediction=on end});lo+=1
+    createToggle({title="Sticky Aim",desc="Stay locked on target",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.StickyAim=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.ShowFOV=on end});lo+=1
+    createToggle({title="Require Right Click",desc="Only aim when right clicking",layoutOrder=lo,default=true,onChange=function(on)Features.aimbotSettings.RequireRightClick=on end});lo+=1
+    createToggle({title="ADS Enabled",desc="Adjust aim speed when ADSing",layoutOrder=lo,default=Features.aimbotSettings.ADSEnabled,onChange=function(on)Features.aimbotSettings.ADSEnabled=on end});lo+=1
+    createDualSlider({title="ADS Multiplier",desc="Lower = faster ADS aim",layoutOrder=lo,default=Features.aimbotSettings.ADSMultiplier or 80,min=10,max=200,onChange=function(v)Features.aimbotSettings.ADSMultiplier=v end});lo+=1
+    createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=false,onChange=function(on)Features.aimbotSettings.AutoFire=on end});lo+=1
+end
+
+local function renderSilentAim()
+    clearContent();local lo=1
+    secHead("🔇 Silent Aim",lo);lo+=1
+    createToggle({title="Enable Silent Aim",desc="Hit targets without aiming at them",layoutOrder=lo,default=Features.silentAimEnabled,onChange=function(on)Features.setSilentAim(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Silent aim field of view",layoutOrder=lo,default=300,min=50,max=1000,onChange=function(v)Features.silentAimSettings.FOV=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum targeting range",layoutOrder=lo,default=500,min=50,max=2000,onChange=function(v)Features.silentAimSettings.MaxDistance=v end});lo+=1
+    createCycleButton({title="Hit Part",desc="Which body part to hit",layoutOrder=lo,default="Head",options={"Head","HumanoidRootPart","UpperTorso"},onChange=function(v)Features.silentAimSettings.HitPart=v end});lo+=1
+    createToggle({title="Team Check",desc="Don't hit teammates",layoutOrder=lo,default=true,onChange=function(on)Features.silentAimSettings.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=Features.silentAimSettings.ShowFOV,onChange=function(on)Features.silentAimSettings.ShowFOV=on end});lo+=1
+end
+
+local function renderFlick()
+    clearContent();local lo=1
+    secHead("💨 Flick",lo);lo+=1
+    createToggle({title="Enable Flick",desc="Flick to nearest head and shoot",layoutOrder=lo,default=Features.flickEnabled,onChange=function(on)Features.flickEnabled=on end});lo+=1
+    createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=300,min=50,max=500,onChange=function(v)Features.flickSettings.FOV=v end});lo+=1
+    createDualSlider({title="Speed",desc="Flick speed multiplier",layoutOrder=lo,default=25,min=5,max=50,onChange=function(v)Features.flickSettings.Speed=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=500,min=50,max=1000,onChange=function(v)Features.flickSettings.MaxDistance=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=true,onChange=function(on)Features.flickSettings.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=true,onChange=function(on)Features.flickSettings.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=Features.flickSettings.ShowFOV,onChange=function(on)Features.flickSettings.ShowFOV=on end});lo+=1
+end
+
+local function renderInfiniteJump()
+    clearContent();local lo=1
+    secHead("🏃 Infinite Jump",lo);lo+=1
+    createToggle({title="Enable Infinite Jump",desc="Hold space to fly",layoutOrder=lo,default=Features.infiniteJumpEnabled,onChange=function(on)Features.setInfiniteJump(on)end});lo+=1
+end
+
+local function renderESP()
+    clearContent();local lo=1
+    secHead("👁 ESP",lo);lo+=1
+    createToggle({title="Enable ESP",desc="See enemies through walls",layoutOrder=lo,default=Features.espEnabled,onChange=function(on)Features.setESP(on)end});lo+=1
+    createToggle({title="Box ESP",desc="Draw boxes around enemies",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.Box=on;Features.setESPSetting("Box",on)end});lo+=1
+    createToggle({title="Filled Box",desc="Fill the ESP boxes",layoutOrder=lo,default=false,onChange=function(on)Features.espSettings.BoxFilled=on;Features.setESPSetting("BoxFilled",on)end});lo+=1
+    createToggle({title="Name ESP",desc="Show enemy names",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.Name=on;Features.setESPSetting("Name",on)end});lo+=1
+    createToggle({title="Distance ESP",desc="Show distance to enemies",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.Distance=on;Features.setESPSetting("Distance",on)end});lo+=1
+    createToggle({title="Team Check",desc="Only show enemies",layoutOrder=lo,default=true,onChange=function(on)Features.espSettings.TeamCheck=on;Features.setESPSetting("TeamCheck",on)end});lo+=1
+end
+
+local function renderUnlockAll()
+    clearContent();local lo=1
+    secHead("🎨 Cosmetics",lo);lo+=1
+    createActionRow({title="Unlock All Cosmetics",desc="Press to unlock all skins",layoutOrder=lo,buttonText="🔓 UNLOCK",onClick=function()Features.setUnlockAll(true);showToast("Unlocking...")end});lo+=1
+    createToggle({title="Auto Skin Changer",desc="Auto-load skin changer on join/teleport",layoutOrder=lo,default=Features.skinChangerEnabled,onChange=function(on)Features.setSkinChanger(on);if on then showToast("Skin changer will auto-load!")end end});lo+=1
+end
+
+local function renderConfig()
+    clearContent();local lo=1
+    secHead("📂 Config",lo);lo+=1
+    
+    local selectedConfig=nil;local autoLoadConfig=nil
+    local savedConfigs=getAllConfigs()
+    if savedConfigs["__autoLoad"]then autoLoadConfig=savedConfigs["__autoLoad"]end
+    
+    local selectedLabel=mkLabel({Parent=mainScroll,Text="Selected: None",Font=FONT_MED,TextSize=11,TextColor=C.accentBrt,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
+    local autoLoadLabel=mkLabel({Parent=mainScroll,Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set",Font=FONT_MED,TextSize=11,TextColor=Color3.fromRGB(255,200,50),LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
+    
+    local listFrame=Instance.new("ScrollingFrame",mainScroll)
+    listFrame.Size=UDim2.new(1,0,0,150);listFrame.LayoutOrder=lo;lo+=1
+    listFrame.BackgroundTransparency=1;listFrame.BorderSizePixel=0;listFrame.CanvasSize=UDim2.new(0,0,0,0);listFrame.AutomaticCanvasSize=Enum.AutomaticSize.Y;listFrame.ScrollBarThickness=3;listFrame.ScrollBarImageColor3=C.accent
+    local listLL=Instance.new("UIListLayout",listFrame);listLL.Padding=UDim.new(0,4);listLL.SortOrder=Enum.SortOrder.LayoutOrder
+    
+    local function refreshList()
+        for _,child in ipairs(listFrame:GetChildren())do if child:IsA("TextButton")then child:Destroy()end end
+        local configs=getAllConfigs();local found=false
+        for name in pairs(configs)do
+            if name:sub(1,2)~="__"then
+                local btn=Instance.new("TextButton",listFrame)
+                btn.Size=UDim2.new(1,0,0,32);btn.Text=(name==autoLoadConfig and"  ⭐ "or"  📁 ")..name
+                btn.Font=FONT_MED;btn.TextSize=12;btn.TextColor3=C.text;btn.TextXAlignment=Enum.TextXAlignment.Left
+                btn.BackgroundColor3=(selectedConfig==name)and C.accent or C.row;btn.BorderSizePixel=0;mkCorner(btn,CR_SM)
+                if selectedConfig==name then found=true end
+                btn.MouseButton1Click:Connect(function()selectedConfig=name;refreshList()end)
+            end
+        end
+        if not found then selectedConfig=nil end
+        selectedLabel.Text=selectedConfig and"Selected: "..selectedConfig or"Selected: None"
+        autoLoadLabel.Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set"
+    end
+    refreshList()
+    
+    local nameInput=Instance.new("TextBox",mainScroll)
+    nameInput.Size=UDim2.new(1,0,0,34);nameInput.LayoutOrder=lo;lo+=1
+    nameInput.PlaceholderText="Config name...";nameInput.Text="";nameInput.TextColor3=C.text
+    nameInput.BackgroundColor3=C.activeDim;nameInput.Font=FONT;nameInput.TextSize=13;nameInput.BorderSizePixel=0
+    mkCorner(nameInput,CR_SM);mkStroke(nameInput,C.accent,0,1)
+    
+    local btnRow1=Instance.new("Frame",mainScroll);btnRow1.BackgroundTransparency=1;btnRow1.Size=UDim2.new(1,0,0,34);btnRow1.LayoutOrder=lo;lo+=1
+    local btnLL1=Instance.new("UIListLayout",btnRow1);btnLL1.FillDirection=Enum.FillDirection.Horizontal;btnLL1.Padding=UDim.new(0,8)
+    
+    local createBtn=Instance.new("TextButton",btnRow1)
+    createBtn.Size=UDim2.new(0.25,-6,1,0);createBtn.Text="✚ Create";createBtn.Font=FONT_BOL;createBtn.TextSize=11
+    createBtn.TextColor3=C.text;createBtn.BackgroundColor3=C.accent;createBtn.AutoButtonColor=false;createBtn.BorderSizePixel=0
+    mkCorner(createBtn,CR_SM)
+    createBtn.MouseButton1Click:Connect(function()
+        local name=nameInput.Text
+        if name==""then showToast("Enter a name!");return end
+        if getAllConfigs()[name]then showToast("Already exists!");return end
+        local ok,msg=saveConfig(name,false)
+        if ok then showToast("Created!");nameInput.Text="";refreshList()else showToast(msg)end
+    end)
+    
+    local overwriteBtn=Instance.new("TextButton",btnRow1)
+    overwriteBtn.Size=UDim2.new(0.25,-6,1,0);overwriteBtn.Text="♻ Overwrite";overwriteBtn.Font=FONT_BOL;overwriteBtn.TextSize=11
+    overwriteBtn.TextColor3=C.text;overwriteBtn.BackgroundColor3=Color3.fromRGB(255,140,0);overwriteBtn.AutoButtonColor=false;overwriteBtn.BorderSizePixel=0
+    mkCorner(overwriteBtn,CR_SM)
+    overwriteBtn.MouseButton1Click:Connect(function()
+        local name=selectedConfig or nameInput.Text
+        if name==""then showToast("Select or enter name!");return end
+        local ok,msg=saveConfig(name,true)
+        if ok then showToast("Saved!");refreshList()else showToast(msg)end
+    end)
+    
+    local loadBtn=Instance.new("TextButton",btnRow1)
+    loadBtn.Size=UDim2.new(0.25,-6,1,0);loadBtn.Text="📂 Load";loadBtn.Font=FONT_BOL;loadBtn.TextSize=11
+    loadBtn.TextColor3=C.text;loadBtn.BackgroundColor3=Color3.fromRGB(40,140,40);loadBtn.AutoButtonColor=false;loadBtn.BorderSizePixel=0
+    mkCorner(loadBtn,CR_SM)
+    loadBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        local ok,msg=loadConfig(selectedConfig);showToast(msg)
+    end)
+    
+    local deleteBtn=Instance.new("TextButton",btnRow1)
+    deleteBtn.Size=UDim2.new(0.25,-6,1,0);deleteBtn.Text="🗑 Delete";deleteBtn.Font=FONT_BOL;deleteBtn.TextSize=11
+    deleteBtn.TextColor3=C.text;deleteBtn.BackgroundColor3=Color3.fromRGB(200,50,50);deleteBtn.AutoButtonColor=false;deleteBtn.BorderSizePixel=0
+    mkCorner(deleteBtn,CR_SM)
+    deleteBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        local ok,msg=deleteConfig(selectedConfig)
+        if ok then
+            if selectedConfig==autoLoadConfig then autoLoadConfig=nil;local c=getAllConfigs();c["__autoLoad"]=nil;saveConfigsToFile(c)end
+            selectedConfig=nil;refreshList();showToast("Deleted!")
+        else showToast(msg)end
+    end)
+    
+    local btnRow2=Instance.new("Frame",mainScroll);btnRow2.BackgroundTransparency=1;btnRow2.Size=UDim2.new(1,0,0,34);btnRow2.LayoutOrder=lo;lo+=1
+    local btnLL2=Instance.new("UIListLayout",btnRow2);btnLL2.FillDirection=Enum.FillDirection.Horizontal;btnLL2.Padding=UDim.new(0,8)
+    
+    local autoBtn=Instance.new("TextButton",btnRow2)
+    autoBtn.Size=UDim2.new(0.5,-4,1,0);autoBtn.Text="⭐ Set Auto Load";autoBtn.Font=FONT_BOL;autoBtn.TextSize=11
+    autoBtn.TextColor3=C.text;autoBtn.BackgroundColor3=Color3.fromRGB(255,200,50);autoBtn.AutoButtonColor=false;autoBtn.BorderSizePixel=0
+    mkCorner(autoBtn,CR_SM)
+    autoBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        autoLoadConfig=selectedConfig;local c=getAllConfigs();c["__autoLoad"]=selectedConfig;saveConfigsToFile(c)
+        refreshList();showToast("Set!")
+    end)
+    
+    local clearBtn=Instance.new("TextButton",btnRow2)
+    clearBtn.Size=UDim2.new(0.5,-4,1,0);clearBtn.Text="❌ Clear";clearBtn.Font=FONT_BOL;clearBtn.TextSize=11
+    clearBtn.TextColor3=C.text;clearBtn.BackgroundColor3=Color3.fromRGB(150,50,50);clearBtn.AutoButtonColor=false;clearBtn.BorderSizePixel=0
+    mkCorner(clearBtn,CR_SM)
+    clearBtn.MouseButton1Click:Connect(function()
+        autoLoadConfig=nil;local c=getAllConfigs();c["__autoLoad"]=nil;saveConfigsToFile(c)
+        refreshList();showToast("Cleared!")
+    end)
+    
+    mkSep(mainScroll,lo);lo+=1
+    secHead("🔄 Auto Load Toggle",lo);lo+=1
+    
+    local autoLoadFrame=Instance.new("Frame",mainScroll);autoLoadFrame.Size=UDim2.new(1,0,0,40);autoLoadFrame.LayoutOrder=lo
+    autoLoadFrame.BackgroundColor3=C.row;autoLoadFrame.BorderSizePixel=0;mkCorner(autoLoadFrame,CR_SM);mkStroke(autoLoadFrame,C.sep,0.4,1);mkPad(autoLoadFrame,8,14,8,14)
+    mkLabel({Parent=autoLoadFrame,Text="Enable Auto Load on Join",Font=FONT_MED,TextSize=12,TextColor=C.text,Size=UDim2.new(0,220,1,0)})
+    local autoLoadTrack=Instance.new("TextButton",autoLoadFrame);autoLoadTrack.Size=UDim2.new(0,44,0,22);autoLoadTrack.AnchorPoint=Vector2.new(1,0.5);autoLoadTrack.Position=UDim2.new(1,0,0.5,0);autoLoadTrack.Text="";autoLoadTrack.BackgroundColor3=C.toggleOff;autoLoadTrack.BorderSizePixel=0;mkCorner(autoLoadTrack,UDim.new(1,0))
+    local autoLoadKnob=Instance.new("Frame",autoLoadTrack);autoLoadKnob.Size=UDim2.new(0,16,0,16);autoLoadKnob.Position=UDim2.new(0,3,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(180,180,200);autoLoadKnob.BorderSizePixel=0;mkCorner(autoLoadKnob,UDim.new(1,0))
+    local autoLoadEnabled=(savedConfigs["__autoLoadEnabled"]==true)
+    if autoLoadEnabled then mkGradient(autoLoadTrack,C.accent,C.accentBrt);autoLoadKnob.Position=UDim2.new(1,-19,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(255,255,255)end
+    
+    autoLoadTrack.MouseButton1Click:Connect(function()
+        autoLoadEnabled=not autoLoadEnabled;local c=getAllConfigs()
+        if autoLoadEnabled then
+            if not autoLoadConfig then showToast("Set a config first!");autoLoadEnabled=false;return end
+            mkGradient(autoLoadTrack,C.accent,C.accentBrt);autoLoadKnob.Position=UDim2.new(1,-19,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(255,255,255);c["__autoLoadEnabled"]=true;showToast("Auto-load ON!")
+        else
+            autoLoadTrack.BackgroundColor3=C.toggleOff
+            for _,v in ipairs(autoLoadTrack:GetChildren())do if v:IsA("UIGradient")then v:Destroy()end end
+            autoLoadKnob.Position=UDim2.new(0,3,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(180,180,200);c["__autoLoadEnabled"]=nil;showToast("Auto-load OFF!")
+        end
+        saveConfigsToFile(c)
+    end)
+end
+
+local function renderKeybinds()
+    clearContent();local lo=1
+    secHead("⌨ Keybinds",lo);lo+=1
+    for id,bind in pairs(Keybinds)do createKeybindRow({id=id,layoutOrder=lo});lo+=1 end
+    createActionRow({title="Reset All Keybinds",desc="Restore defaults",layoutOrder=lo,buttonText="↺ Reset",onClick=function()
+        Keybinds={aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"},silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"},esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"},infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"},flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"},unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"}}
+        renderKeybinds();showToast("Keybinds reset!")
+    end});lo+=1
+end
+
+-- NAVIGATION
+mkNavHdr("🎯 COMBAT",1)
+mkNav("Aimbot",2,renderAimbot)
+mkNav("Silent Aim",3,renderSilentAim)
+mkNav("Flick",4,renderFlick)
+mkSep(sbScroll,5)
+mkNavHdr("🏃 MOVEMENT",6)
+mkNav("Infinite Jump",7,renderInfiniteJump)
+mkSep(sbScroll,8)
+mkNavHdr("👁 VISUALS",9)
+mkNav("ESP",10,renderESP)
+mkSep(sbScroll,11)
+mkNavHdr("🎨 COSMETICS",12)
+mkNav("Unlock All",13,renderUnlockAll)
+mkSep(sbScroll,14)
+mkNavHdr("⚙ SETTINGS",15)
+mkNav("Config",16,renderConfig)
+mkNav("Keybinds",17,renderKeybinds)
+
+renderAimbot()
+if navBtns["Aimbot"]then setNavActive(navBtns["Aimbot"])end
+
+-- MENU TOGGLE & KEYBINDS
+local menuOpen=false
+local function toggleMenu()menuOpen=not menuOpen;root.Visible=menuOpen end
+winClose.MouseButton1Click:Connect(function()menuOpen=false;root.Visible=false end)
+winMin.MouseButton1Click:Connect(function()menuOpen=false;root.Visible=false end)
+
+UIS.InputBegan:Connect(function(input,gp)
+    if gp then return end
+    if input.KeyCode==Enum.KeyCode.RightShift or input.KeyCode==Enum.KeyCode.RightControl then toggleMenu()end
+    if listeningFor then
+        local kb=kbBtns[listeningFor]
+        if kb then local bind=Keybinds[listeningFor]
+            if bind then bind.key=input.KeyCode;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35);listeningFor=nil end
+        end
+        return
+    end
+    for id,bind in pairs(Keybinds)do
+        if input.KeyCode==bind.key and not bind.holdMode then
+            if id=="aimbot"then Features.setAimbot(not Features.aimbotEnabled)end
+            if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
+            if id=="esp"then Features.setESP(not Features.espEnabled)end
+            if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
+            if id=="flick"then doFlick()end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
+        end
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    for id,bind in pairs(Keybinds)do
+        if input.KeyCode==bind.key and bind.holdMode then
+            if id=="aimbot"then Features.setAimbot(not Features.aimbotEnabled)end
+            if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
+            if id=="esp"then Features.setESP(not Features.espEnabled)end
+            if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
+            if id=="flick"then doFlick()end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
+        end
+    end
+end)
+
+print("Bosco Hub V1 loaded!")
+showToast("Bosco Hub V1 loaded!")
