@@ -34,10 +34,7 @@ LP.CharacterAdded:Connect(function(char)
         end
     end
 end)
-local function isTeammate(player)
-    if not player then return false end
-    return Teammates[player.UserId] == true
-end
+local function isTeammate(player) return player and Teammates[player.UserId] == true end
 
 -- UTILITY
 local rayParams = RaycastParams.new()
@@ -82,8 +79,7 @@ RunService.RenderStepped:Connect(function()
     if not hum or hum.FloorMaterial ~= Enum.Material.Air then return end
     if tick() - lastJump < 0.1 then return end
     hum.JumpPower = Features.infiniteJumpPower
-    hum.Jump = true
-    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    hum.Jump = true; hum:ChangeState(Enum.HumanoidStateType.Jumping)
     lastJump = tick()
 end)
 function Features.setInfiniteJump(on) Features.infiniteJumpEnabled = on end
@@ -223,7 +219,7 @@ local function getPredictedPosition(part)
     return pos:Lerp(predictedPos, 0.85)
 end
 local function getBestTarget()
-    local cam=Camera; if not cam then return nil,nil,nil end
+    local cam=Camera; if not cam then return nil,nil end
     local mp=UIS:GetMouseLocation(); local fovCenter=Vector2.new(mp.X,mp.Y); local s=Features.aimbotSettings; local now=tick()
     if s.StickyAim and lockedTarget and isValidTarget(lockedTarget) and now-lockTime<s.StickyTime then
         local tPlayer=Players:GetPlayerFromCharacter(lockedTarget.Parent)
@@ -255,7 +251,7 @@ local function getBestTarget()
         local hum=char:FindFirstChildOfClass("Humanoid")
         table.insert(candidates,{part=part,player=p,screenPos=screenPos,dist2D=d,dist3D=(cam.CFrame.Position-aimPos).Magnitude,health=hum and hum.Health or 100})
     end
-    if #candidates==0 then return nil,nil,nil end
+    if #candidates==0 then return nil,nil end
     table.sort(candidates,function(a,b)
         if s.TargetPriority=="FOV" then return a.dist2D<b.dist2D
         elseif s.TargetPriority=="Distance" then return a.dist3D<b.dist3D
@@ -305,7 +301,7 @@ function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbo
 
 -- FLICK
 Features.flickEnabled = false
-Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ReturnDelay=0.01, ShowFOV=true }
+Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true }
 local isFlicking, flickFovCircle = false, nil
 local function updateFlickFOV()
     if not Features.flickSettings.ShowFOV then if flickFovCircle then flickFovCircle.Visible=false end; return end
@@ -404,29 +400,19 @@ local function loadConfig(name)
 end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
--- Auto-save current settings
-local function autoSave() local c = getAllConfigs(); c["__current"] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled }; saveConfigsToFile(c) end
-
--- Auto-load last settings
+-- Auto-load config on join
 task.wait(1)
 local saved = getAllConfigs()
-if saved["__current"] then
-    local s = saved["__current"]
-    if s.aimbot ~= nil then Features.setAimbot(s.aimbot) end
-    if s.silentAim ~= nil then Features.setSilentAim(s.silentAim) end
-    if s.esp ~= nil then Features.setESP(s.esp) end
-    if s.infiniteJump ~= nil then Features.setInfiniteJump(s.infiniteJump) end
-    if s.flick ~= nil then Features.flickEnabled = s.flick end
-    if s.unlockAll ~= nil then Features.setUnlockAll(s.unlockAll) end
-    if s.skinChanger ~= nil then Features.setSkinChanger(s.skinChanger) end
+if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
+    loadConfig(saved["__autoLoad"])
 end
-if saved["__autoLoadEnabled"] and saved["__autoLoad"] then loadConfig(saved["__autoLoad"]) end
-
--- Save periodically
-task.spawn(function() while true do task.wait(5); pcall(autoSave) end end)
 
 -- Auto execute on teleport
-if queue_on_teleport then queue_on_teleport([[loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()]]) end
+if queue_on_teleport then
+    if saved["__autoLoadEnabled"] then
+        queue_on_teleport([[loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()]])
+    end
+end
 
 -- ═══════════════════════════════════════════════════════
 --  UI
