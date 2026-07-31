@@ -172,7 +172,7 @@ RunService.RenderStepped:Connect(function()
     elseif silentFovCircle then silentFovCircle.Visible = false end
 end)
 
--- AIMBOT
+-- AIMBOT (Fixed - No Animation Crash)
 Features.aimbotEnabled = false
 Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80 }
 local function getAdaptiveSpeed(baseSpeed)
@@ -182,7 +182,7 @@ local function getAdaptiveSpeed(baseSpeed)
         local adsVal = Features.aimbotSettings.ADSMultiplier or 100
         multiplier = multiplier * (1 + (100 - adsVal) / 100)
     end
-    return baseSpeed * multiplier * 3
+    return math.min(baseSpeed * multiplier * 3, 30)
 end
 local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
 local function createTargetIndicator()
@@ -262,11 +262,15 @@ local function getBestTarget()
     return best.part,best.screenPos,best.player
 end
 local function moveMouseToTarget(targetScreenPos,overrideSpeed)
-    local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local delta=targetScreenPos-cm; local dist=delta.Magnitude
+    local mp=UIS:GetMouseLocation()
+    local cm=Vector2.new(mp.X,mp.Y)
+    local delta=targetScreenPos-cm
+    local dist=delta.Magnitude
     if dist<2 then return true end
     local speed = getAdaptiveSpeed(overrideSpeed or Features.aimbotSettings.AimSpeed)
-    local moveAmount = math.min(dist, speed * 0.016)
-    local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
+    local moveAmount = math.min(dist, speed * 0.2)
+    local dir = delta.Unit
+    mousemoveabs(cm.X + dir.X * moveAmount, cm.Y + dir.Y * moveAmount)
     return false
 end
 local function handleAutoFire(targetScreenPos)
@@ -281,6 +285,10 @@ local function handleAutoFire(targetScreenPos)
 end
 local function aimbotRenderStep()
     if not Features.aimbotEnabled then if fovCircle then fovCircle.Visible=false end; return end
+    local char = LP.Character
+    if not char or not char:FindFirstChildOfClass("Humanoid") or char:FindFirstChildOfClass("Humanoid").Health <= 0 then
+        if targetIndicator then targetIndicator.Enabled=false end; return
+    end
     updateFOVCircle()
     if Features.aimbotSettings.RequireRightClick and not UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
         lockedTarget=nil; targetPlayer=nil; onTargetTime=nil
@@ -414,7 +422,7 @@ if queue_on_teleport then
 end
 
 -- ═══════════════════════════════════════════════════════
---  UI (FIXED - reads current settings)
+--  UI (FIXED - reads current settings, logo added)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -467,11 +475,16 @@ local sbScroll=Instance.new("ScrollingFrame");sbScroll.BackgroundTransparency=1;
 mkPad(sbScroll,12,10,12,10)
 local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,4);sbLL.SortOrder=Enum.SortOrder.LayoutOrder;sbLL.Parent=sbScroll
 
-local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,90);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
-local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,4);brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
-mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=22,TextColor=C.accentBrt,Size=UDim2.new(1,0,0,30),LayoutOrder=1})
-mkLabel({Parent=brandBlock,Text="V1",Font=FONT_BOL,TextSize=14,TextColor=C.accent2,Size=UDim2.new(1,0,0,22),LayoutOrder=2})
-mkLabel({Parent=brandBlock,Text="by Bosco",Font=FONT,TextSize=10,TextColor=C.textDim,Size=UDim2.new(1,0,0,24),LayoutOrder=3})
+-- Logo + Brand
+local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,110);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
+local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,4);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
+local logo=Instance.new("ImageLabel",brandBlock)
+logo.Size=UDim2.new(0,60,0,60);logo.BackgroundTransparency=1
+logo.Image="https://i.imgur.com/ebLjLFI.jpeg"
+logo.ScaleType=Enum.ScaleType.Fit
+logo.LayoutOrder=1
+mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
+mkLabel({Parent=brandBlock,Text="V1",Font=FONT_BOL,TextSize=12,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=3})
 
 local navBtns={};local activeNav=nil
 local function setNavActive(btn)if activeNav then activeNav.BackgroundColor3=Color3.fromRGB(0,0,0);activeNav.BackgroundTransparency=1;activeNav.TextColor3=C.textDim end;activeNav=btn;btn.BackgroundColor3=C.activeDim;btn.BackgroundTransparency=0;btn.TextColor3=C.accentBrt end
@@ -567,7 +580,7 @@ local function createKeybindRow(props)
     return row
 end
 
--- PAGES (ALL DEFAULTS READ FROM Features.*Settings.*)
+-- PAGES
 local function renderAimbot()
     clearContent();local lo=1;local s=Features.aimbotSettings
     secHead("🎯 Aimbot",lo);lo+=1
