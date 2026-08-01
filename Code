@@ -217,7 +217,7 @@ local function getAdaptiveSpeed(baseSpeed)
         local adsVal = math.max(Features.aimbotSettings.ADSMultiplier or 100, 1)
         multiplier = multiplier * (100 / adsVal)
     end
-    return baseSpeed * multiplier * 8
+    return baseSpeed * multiplier * 15
 end
 local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
 local function createTargetIndicator()
@@ -299,7 +299,7 @@ local function moveMouseToTarget(targetScreenPos,overrideSpeed)
     elseif dist < 80 then distMult = 0.80
     elseif dist < 200 then distMult = 0.90
     else distMult = 1.0 end
-    local moveAmount = math.min(speed * 0.5, dist * 0.7) * distMult
+    local moveAmount = math.min(speed * 0.8, dist * 0.9) * distMult
     local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
     return false
 end
@@ -429,19 +429,17 @@ RunService.RenderStepped:Connect(function() if Features.flickEnabled then update
 -- UNLOCK ALL + SKIN CHANGER
 Features.unlockAllEnabled = false
 Features.skinChangerEnabled = false
-local unlockRan, skinChangerLoaded = false, false
+local unlockRan = false
 local function runUnlockAll()
     if unlockRan then return end; unlockRan = true; task.wait(3)
     pcall(function() loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))() end)
 end
 local function runSkinChanger()
-    if skinChangerLoaded then return end; skinChangerLoaded = true
     pcall(function() loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))() end)
     if queue_on_teleport then queue_on_teleport([[loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))()]]) end
 end
 function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then unlockRan = false; runUnlockAll() end end
-function Features.setSkinChanger(on) Features.skinChangerEnabled = on; if on then skinChangerLoaded = false; runSkinChanger() end end
-LP.CharacterAdded:Connect(function() if Features.skinChangerEnabled then skinChangerLoaded = false; runSkinChanger() end end)
+function Features.setSkinChanger(on) Features.skinChangerEnabled = on; if on then runSkinChanger() end end
 
 -- STAFF DETECTOR
 Features.staffDetectorEnabled = false
@@ -517,7 +515,11 @@ local function saveConfigsToFile(configs) if writefile then pcall(function() wri
 local function saveConfig(name, overwrite)
     local configs = getAllConfigs()
     if configs[name] and not overwrite then return false, "Config exists!" end
-    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=Keybinds }
+    local keybindsCopy = {}
+    for k, v in pairs(Keybinds) do
+        keybindsCopy[k] = { key = v.key.Name, holdMode = v.holdMode, label = v.label }
+    end
+    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=keybindsCopy }
     saveConfigsToFile(configs); return true, "Saved!"
 end
 local function loadConfig(name)
@@ -540,38 +542,23 @@ local function loadConfig(name)
     if data.autoSpoofDevice ~= nil then autoSpoofDevice = data.autoSpoofDevice end
     if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end
     if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
-    if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] and v.key then Keybinds[k] = v end end end
+    if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] then Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key; Keybinds[k].holdMode = v.holdMode end end end
     return true, "Loaded!"
 end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
 -- Auto-load config on join
-task.wait(1)
+task.wait(0.1)
 local saved = getAllConfigs()
 if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
     loadConfig(saved["__autoLoad"])
 end
 
-task.wait(1)
-local saved = getAllConfigs()
-if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
-    showToast("Loading config: " .. saved["__autoLoad"])
-    loadConfig(saved["__autoLoad"])
-else
-    showToast("No auto-load config set")
-end
 -- Auto execute on teleport
 if queue_on_teleport then
     if saved["__autoLoadEnabled"] then
         queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code"))()]])
     end
-end
-
-local test = getAllConfigs()
-if test and next(test) then
-    showToast("Config loaded: " .. #next(test) .. " entries")
-else
-    showToast("No config found - using defaults")
 end
 
 -- ═══════════════════════════════════════════════════════
