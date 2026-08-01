@@ -299,7 +299,7 @@ local function moveMouseToTarget(targetScreenPos,overrideSpeed)
     elseif dist < 80 then distMult = 0.80
     elseif dist < 200 then distMult = 0.90
     else distMult = 1.0 end
-    local moveAmount = math.min(speed * 0.3, dist * 0.5) * distMult
+    local moveAmount = math.min(speed * 0.5, dist * 0.7) * distMult
     local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
     return false
 end
@@ -345,7 +345,7 @@ function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbo
 
 -- FLICK
 Features.flickEnabled = false
-Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true, OvershootChance=15 }
+Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true }
 local isFlicking, flickFovCircle = false, nil
 local function updateFlickFOV()
     if not Features.flickSettings.ShowFOV then if flickFovCircle then flickFovCircle.Visible=false end; return end
@@ -398,6 +398,7 @@ local function doFlick()
         end
     end
     if not targetHead then UIS.MouseBehavior = savedMouseBehavior; isFlicking = false; return end
+    
     local dx = (targetScreenPos.X - mx) * adsMultiplier
     local dy = (targetScreenPos.Y - my) * adsMultiplier
     local dist = math.sqrt(dx*dx + dy*dy)
@@ -408,30 +409,26 @@ local function doFlick()
     elseif dist < 300 then distMult = 0.95
     else distMult = 1.0 end
     local finalMult = speedMult * distMult
+    
+    -- 4 steps to head
     mousemoverel(dx * 0.4 * finalMult, dy * 0.4 * finalMult); task.wait(0.002)
     mousemoverel(dx * 0.35 * finalMult, dy * 0.35 * finalMult); task.wait(0.002)
     mousemoverel(dx * 0.20 * finalMult, dy * 0.20 * finalMult); task.wait(0.001)
     local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
-    local overshootChance = s.OvershootChance or 15
-    if math.random(1, 100) <= overshootChance then
-        local angle = math.random() * math.pi * 2
-        local overshootDist = math.random(5, 10)
-        mousemoverel(math.cos(angle) * overshootDist, math.sin(angle) * overshootDist)
-        task.wait(0.05)
-        local pullX = targetScreenPos.X - UIS:GetMouseLocation().X
-        local pullY = targetScreenPos.Y - UIS:GetMouseLocation().Y
-        mousemoverel(pullX, pullY)
-    else
-        mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
-    end
+    mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
+    
+    -- Silent aim during flick shot
+    local wasSilent = Features.silentAimEnabled
+    Features.silentAimEnabled = true
+    setupSilentAim()
     mouse1press(); mouse1release()
+    Features.silentAimEnabled = wasSilent
     UIS.MouseBehavior = savedMouseBehavior
-    local driftX = (math.random() - 0.5) * 15; local driftY = math.random(3, 8)
-    mousemoverel(driftX, driftY)
-    task.wait(0.04)
+    
+    -- 3 step return
     local rx = -(targetScreenPos.X - mx); local ry = -(targetScreenPos.Y - my)
-    mousemoverel(rx * 0.4, ry * 0.4); task.wait(0.02)
-    mousemoverel(rx * 0.3, ry * 0.3); task.wait(0.02)
+    mousemoverel(rx * 0.5, ry * 0.5); task.wait(0.015)
+    mousemoverel(rx * 0.3, ry * 0.3); task.wait(0.015)
     mousemoverel(rx * 0.2, ry * 0.2)
     isFlicking = false
 end
@@ -467,7 +464,7 @@ LP.CharacterAdded:Connect(function() if Features.staffDetectorEnabled then staff
 
 -- SPOOFER
 Features.spooferEnabled = false
-Features.spooferSettings = { victim=0, helper="", level=67, streak=67, elo=0, keys=67, verified=false, platform="VR" }
+Features.spooferSettings = { victim=0, helper="", streak=67, elo=0, keys=67, verified=false, platform="VR" }
 local spooferLoaded, spooferReloading = false, false
 local function runSpoofer()
     if spooferLoaded then return end; spooferLoaded = true
@@ -514,6 +511,24 @@ LP.CharacterAdded:Connect(function()
     if autoSpoofDevice then task.wait(1); spoofDevice(autoSpoofDevice) end
 end)
 
+-- STRETCH RES
+Features.stretchResEnabled = false
+Features.stretchResValue = 0.81
+local stretchResConnection = nil
+function Features.setStretchRes(on)
+    Features.stretchResEnabled = on
+    if on then
+        if not stretchResConnection then
+            stretchResConnection = RunService.RenderStepped:Connect(function()
+                local resVal = 1 - Features.stretchResValue
+                Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, resVal, 0, 0, 0, 1)
+            end)
+        end
+    else
+        if stretchResConnection then stretchResConnection:Disconnect(); stretchResConnection = nil end
+    end
+end
+
 -- KEYBINDS
 local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
 local function keyName(kc) if kc == nil then return "None" end; if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
@@ -530,7 +545,7 @@ local function saveConfigsToFile(configs) if writefile then pcall(function() wri
 local function saveConfig(name, overwrite)
     local configs = getAllConfigs()
     if configs[name] and not overwrite then return false, "Config exists!" end
-    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, keybinds=Keybinds }
+    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=Keybinds }
     saveConfigsToFile(configs); return true, "Saved!"
 end
 local function loadConfig(name)
@@ -551,6 +566,8 @@ local function loadConfig(name)
     if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end
     if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
     if data.autoSpoofDevice ~= nil then autoSpoofDevice = data.autoSpoofDevice end
+    if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end
+    if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
     if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] and v.key then Keybinds[k] = v end end end
     return true, "Loaded!"
 end
@@ -571,7 +588,7 @@ if queue_on_teleport then
 end
 
 -- ═══════════════════════════════════════════════════════
---  UI (BH Logo + All Pages Fixed)
+--  UI (BH Logo + All Pages)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -768,7 +785,6 @@ local function renderFlick()
     createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
     createDualSlider({title="Speed",desc="Flick speed multiplier",layoutOrder=lo,default=s.Speed,min=5,max=50,onChange=function(v)s.Speed=v end});lo+=1
     createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
-    createDualSlider({title="Overshoot Chance %",desc="Chance to overshoot then correct",layoutOrder=lo,default=s.OvershootChance or 15,min=0,max=100,onChange=function(v)s.OvershootChance=v end});lo+=1
     createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
     createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
     createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
@@ -846,18 +862,34 @@ local function renderFun()
             layoutOrder=lo,
             default=autoSpoofDevice==device[2],
             onChange=function(on)
-                if on then
-                    autoSpoofDevice=device[2]
-                    spoofDevice(device[2])
-                    showToast("Auto-spoof: "..device[1])
-                else
-                    autoSpoofDevice=nil
-                    showToast("Auto-spoof OFF")
-                end
+                if on then autoSpoofDevice=device[2];spoofDevice(device[2]);showToast("Auto-spoof: "..device[1])
+                else autoSpoofDevice=nil;showToast("Auto-spoof OFF")end
             end
         })
         lo+=1
     end
+    
+    mkSep(mainScroll,lo);lo+=1
+    secHead("📐 Stretch Resolution",lo);lo+=1
+    
+    createToggle({
+        title="Enable Stretch Res",
+        desc="Makes enemies wider (easier to hit)",
+        layoutOrder=lo,
+        default=Features.stretchResEnabled,
+        onChange=function(on)Features.setStretchRes(on)end
+    })
+    lo+=1
+    
+    local stretchRow=mkRow("Stretch Value",lo,52);lo+=1
+    mkLabel({Parent=stretchRow,Text="Stretch Amount",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    mkLabel({Parent=stretchRow,Text="1.0 = normal | 0.0 = max stretch",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
+    local stretchInput=Instance.new("TextBox",stretchRow)
+    stretchInput.Size=UDim2.fromOffset(70,26);stretchInput.Position=UDim2.new(1,-70,0.5,-13)
+    stretchInput.Text=tostring(Features.stretchResValue);stretchInput.TextColor3=C.text
+    stretchInput.BackgroundColor3=C.activeDim;stretchInput.Font=FONT;stretchInput.TextSize=12;stretchInput.BorderSizePixel=0
+    mkCorner(stretchInput,CR_SM);mkStroke(stretchInput,C.accent,0,1)
+    stretchInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(stretchInput.Text)if num and num>=0 and num<=1 then Features.stretchResValue=num end end end)
 end
 
 local function renderConfig()
