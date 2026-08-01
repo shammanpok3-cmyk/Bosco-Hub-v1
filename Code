@@ -66,6 +66,40 @@ end
 
 local Features = {}
 
+-- ANTI-CHEAT BYPASS
+local oldtable; oldtable = hookfunction(getrenv().setmetatable, newcclosure(function(Table, Metatable)
+    if Metatable and typeof(Metatable) == "table" and rawget(Metatable, "__mode") == "kv" then
+        local trace = debug.traceback()
+        if trace:find("LocalScript3") or trace:find("MiscellaneousController") then
+            return oldtable({1, 2, 3}, {})
+        end
+    end
+    return oldtable(Table, Metatable)
+end))
+local oldgc = getgc; getgc = function(...)
+    local gc = oldgc(...)
+    local filtered = {}
+    for _, v in ipairs(gc) do
+        if typeof(v) == "function" then
+            local src = debug.info(v, "s")
+            if not (src and (src:find("LocalScript3") or src:find("MiscellaneousController"))) then
+                table.insert(filtered, v)
+            end
+        else
+            table.insert(filtered, v)
+        end
+    end
+    return filtered
+end
+for _, v in getgc() do
+    if typeof(v) == "function" then
+        local src = debug.info(v, "s")
+        if src and (src:find("LocalScript3") or src:find("MiscellaneousController")) then
+            hookfunction(v, newcclosure(function() return task.wait(9e9) end))
+        end
+    end
+end
+
 -- INFINITE JUMP
 Features.infiniteJumpEnabled = false
 Features.infiniteJumpPower = 50
@@ -366,28 +400,21 @@ local function doFlick()
     if not targetHead then UIS.MouseBehavior = savedMouseBehavior; isFlicking = false; return end
     local dx = (targetScreenPos.X - mx) * adsMultiplier
     local dy = (targetScreenPos.Y - my) * adsMultiplier
-    local dist = math.sqrt(dx*dx + dy*dy)
-    local speedMult = (s.Speed / 25)
-    local distMult
-    if dist < 50 then distMult = 0.80
-    elseif dist < 150 then distMult = 0.90
-    elseif dist < 300 then distMult = 0.95
-    else distMult = 1.0 end
-    local finalMult = speedMult * distMult
-    mousemoverel(dx * 0.4 * finalMult, dy * 0.4 * finalMult); task.wait(0.002)
-    mousemoverel(dx * 0.35 * finalMult, dy * 0.35 * finalMult); task.wait(0.002)
-    mousemoverel(dx * 0.20 * finalMult, dy * 0.20 * finalMult); task.wait(0.001)
+    -- Snap to head
+    mousemoverel(dx * 0.7, dy * 0.7); task.wait(0.001)
+    mousemoverel(dx * 0.3, dy * 0.3)
     local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
     mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
+    -- Shoot with silent aim
     local wasSilent = Features.silentAimEnabled
     Features.silentAimEnabled = true; setupSilentAim()
     mouse1press(); mouse1release()
     Features.silentAimEnabled = wasSilent
     UIS.MouseBehavior = savedMouseBehavior
+    -- Return
     local rx = -(targetScreenPos.X - mx); local ry = -(targetScreenPos.Y - my)
-    mousemoverel(rx * 0.5, ry * 0.5); task.wait(0.015)
-    mousemoverel(rx * 0.3, ry * 0.3); task.wait(0.015)
-    mousemoverel(rx * 0.2, ry * 0.2)
+    mousemoverel(rx * 0.7, ry * 0.7); task.wait(0.01)
+    mousemoverel(rx * 0.3, ry * 0.3)
     isFlicking = false
 end
 RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
@@ -514,7 +541,7 @@ end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
 -- Auto-load config on join
-task.wait(2)
+task.wait(1)
 local saved = getAllConfigs()
 if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
     loadConfig(saved["__autoLoad"])
@@ -764,9 +791,7 @@ end
 local function renderFun()
     clearContent();local lo=1;local s=Features.spooferSettings
     secHead("🎭 Spoofer",lo);lo+=1
-    
     createToggle({title="Enable Spoofer",desc="Impersonate another player",layoutOrder=lo,default=Features.spooferEnabled,onChange=function(on)Features.setSpoofer(on)end});lo+=1
-    
     local victimRow=mkRow("Victim UserID",lo,52);lo+=1
     mkLabel({Parent=victimRow,Text="Victim UserID",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
     mkLabel({Parent=victimRow,Text="0 = spoof as yourself",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
@@ -777,7 +802,6 @@ local function renderFun()
     victimInput.Font=FONT;victimInput.TextSize=12;victimInput.BorderSizePixel=0
     mkCorner(victimInput,CR_SM);mkStroke(victimInput,C.accent,0,1)
     victimInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(victimInput.Text) if num then s.victim=math.floor(num);Features.reloadSpoofer() end end end)
-    
     local streakRow=mkRow("Win Streak",lo,52);lo+=1
     mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
     mkLabel({Parent=streakRow,Text="Fake win streak number",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
@@ -788,39 +812,17 @@ local function renderFun()
     streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
     mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
     streakInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(streakInput.Text) if num then s.streak=math.floor(num);Features.reloadSpoofer() end end end)
-    
     createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.verified,onChange=function(on)s.verified=on;Features.reloadSpoofer()end});lo+=1
-    
     mkSep(mainScroll,lo);lo+=1
     secHead("📱 Device Spoofer",lo);lo+=1
-    
     local devices={{"Mouse & Keyboard","MouseKeyboard"},{"Gamepad","Gamepad"},{"Mobile (Touch)","Touch"},{"VR","VR"}}
     for _,device in ipairs(devices)do
-        createToggle({
-            title=device[1],
-            desc="Auto-spoof as "..device[1].." on respawn",
-            layoutOrder=lo,
-            default=autoSpoofDevice==device[2],
-            onChange=function(on)
-                if on then autoSpoofDevice=device[2];spoofDevice(device[2]);showToast("Auto-spoof: "..device[1])
-                else autoSpoofDevice=nil;showToast("Auto-spoof OFF")end
-            end
-        })
+        createToggle({title=device[1],desc="Auto-spoof as "..device[1].." on respawn",layoutOrder=lo,default=autoSpoofDevice==device[2],onChange=function(on)if on then autoSpoofDevice=device[2];spoofDevice(device[2]);showToast("Auto-spoof: "..device[1])else autoSpoofDevice=nil;showToast("Auto-spoof OFF")end end})
         lo+=1
     end
-    
     mkSep(mainScroll,lo);lo+=1
     secHead("📐 Stretch Resolution",lo);lo+=1
-    
-    createToggle({
-        title="Enable Stretch Res",
-        desc="Makes enemies wider (easier to hit)",
-        layoutOrder=lo,
-        default=Features.stretchResEnabled,
-        onChange=function(on)Features.setStretchRes(on)end
-    })
-    lo+=1
-    
+    createToggle({title="Enable Stretch Res",desc="Makes enemies wider (easier to hit)",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
     local stretchRow=mkRow("Stretch Value",lo,52);lo+=1
     mkLabel({Parent=stretchRow,Text="Stretch Amount",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
     mkLabel({Parent=stretchRow,Text="1.0 = normal | 0.0 = max stretch",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
