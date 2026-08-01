@@ -514,7 +514,7 @@ end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
 -- Auto-load config on join
-task.wait(0.1)
+task.wait(2)
 local saved = getAllConfigs()
 if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
     loadConfig(saved["__autoLoad"])
