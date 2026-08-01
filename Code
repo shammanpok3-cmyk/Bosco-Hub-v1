@@ -398,7 +398,6 @@ local function doFlick()
         end
     end
     if not targetHead then UIS.MouseBehavior = savedMouseBehavior; isFlicking = false; return end
-    
     local dx = (targetScreenPos.X - mx) * adsMultiplier
     local dy = (targetScreenPos.Y - my) * adsMultiplier
     local dist = math.sqrt(dx*dx + dy*dy)
@@ -409,20 +408,16 @@ local function doFlick()
     elseif dist < 300 then distMult = 0.95
     else distMult = 1.0 end
     local finalMult = speedMult * distMult
-    
     mousemoverel(dx * 0.4 * finalMult, dy * 0.4 * finalMult); task.wait(0.002)
     mousemoverel(dx * 0.35 * finalMult, dy * 0.35 * finalMult); task.wait(0.002)
     mousemoverel(dx * 0.20 * finalMult, dy * 0.20 * finalMult); task.wait(0.001)
     local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
     mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
-    
     local wasSilent = Features.silentAimEnabled
-    Features.silentAimEnabled = true
-    setupSilentAim()
+    Features.silentAimEnabled = true; setupSilentAim()
     mouse1press(); mouse1release()
     Features.silentAimEnabled = wasSilent
     UIS.MouseBehavior = savedMouseBehavior
-    
     local rx = -(targetScreenPos.X - mx); local ry = -(targetScreenPos.Y - my)
     mousemoverel(rx * 0.5, ry * 0.5); task.wait(0.015)
     mousemoverel(rx * 0.3, ry * 0.3); task.wait(0.015)
@@ -468,45 +463,25 @@ local function runSpoofer()
     local victimID = Features.spooferSettings.victim
     if not victimID or victimID == 0 then victimID = LP.UserId end
     getgenv().Config = {
-        victim = victimID,
-        helper = Features.spooferSettings.helper or "",
-        level = 67,
-        streak = Features.spooferSettings.streak or 67,
-        elo = Features.spooferSettings.elo or 0,
-        keys = Features.spooferSettings.keys or 67,
-        premium = false,
-        verified = Features.spooferSettings.verified or false,
-        unlockall = false,
-        platform = "",
-        join = "discord.gg/rivalscomp"
+        victim = victimID, helper = Features.spooferSettings.helper or "",
+        level = 67, streak = Features.spooferSettings.streak or 67,
+        elo = Features.spooferSettings.elo or 0, keys = Features.spooferSettings.keys or 67,
+        premium = false, verified = Features.spooferSettings.verified or false,
+        unlockall = false, platform = "", join = "discord.gg/rivalscomp"
     }
     loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/ab95af5e8df41b1c817329fcd4e97840/raw/2865e050e0d160c7aa7e4e862f9cf59eed41ca2a/gistfile1.txt"))()
 end
-function Features.setSpoofer(on)
-    Features.spooferEnabled = on
-    if on then spooferLoaded = false; runSpoofer() end
-end
+function Features.setSpoofer(on) Features.spooferEnabled = on; if on then spooferLoaded = false; runSpoofer() end end
 function Features.reloadSpoofer()
     if not Features.spooferEnabled or spooferReloading then return end
-    spooferReloading = true
-    Features.setSpoofer(false)
-    task.wait(0.5)
-    Features.setSpoofer(true)
-    task.wait(0.5)
-    spooferReloading = false
+    spooferReloading = true; Features.setSpoofer(false); task.wait(0.5); Features.setSpoofer(true); task.wait(0.5); spooferReloading = false
 end
 
 -- DEVICE SPOOFER
 local SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
-local function spoofDevice(device)
-    SetControlsRemote:FireServer("MouseKeyboard")
-    task.wait(0.3)
-    SetControlsRemote:FireServer(device)
-end
+local function spoofDevice(device) SetControlsRemote:FireServer("MouseKeyboard"); task.wait(0.3); SetControlsRemote:FireServer(device) end
 local autoSpoofDevice = nil
-LP.CharacterAdded:Connect(function()
-    if autoSpoofDevice then task.wait(1); spoofDevice(autoSpoofDevice) end
-end)
+LP.CharacterAdded:Connect(function() if autoSpoofDevice then task.wait(1); spoofDevice(autoSpoofDevice) end end)
 
 -- STRETCH RES
 Features.stretchResEnabled = false
@@ -523,7 +498,8 @@ function Features.setStretchRes(on)
         end
     else
         if stretchResConnection then stretchResConnection:Disconnect(); stretchResConnection = nil end
-    end end
+    end
+end
 
 -- KEYBINDS
 local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
