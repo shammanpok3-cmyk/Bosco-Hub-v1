@@ -410,14 +410,12 @@ local function doFlick()
     else distMult = 1.0 end
     local finalMult = speedMult * distMult
     
-    -- 4 steps to head
     mousemoverel(dx * 0.4 * finalMult, dy * 0.4 * finalMult); task.wait(0.002)
     mousemoverel(dx * 0.35 * finalMult, dy * 0.35 * finalMult); task.wait(0.002)
     mousemoverel(dx * 0.20 * finalMult, dy * 0.20 * finalMult); task.wait(0.001)
     local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
     mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
     
-    -- Silent aim during flick shot
     local wasSilent = Features.silentAimEnabled
     Features.silentAimEnabled = true
     setupSilentAim()
@@ -425,7 +423,6 @@ local function doFlick()
     Features.silentAimEnabled = wasSilent
     UIS.MouseBehavior = savedMouseBehavior
     
-    -- 3 step return
     local rx = -(targetScreenPos.X - mx); local ry = -(targetScreenPos.Y - my)
     mousemoverel(rx * 0.5, ry * 0.5); task.wait(0.015)
     mousemoverel(rx * 0.3, ry * 0.3); task.wait(0.015)
@@ -464,7 +461,7 @@ LP.CharacterAdded:Connect(function() if Features.staffDetectorEnabled then staff
 
 -- SPOOFER
 Features.spooferEnabled = false
-Features.spooferSettings = { victim=0, helper="", streak=67, elo=0, keys=67, verified=false, platform="VR" }
+Features.spooferSettings = { victim=0, helper="", streak=67, elo=0, keys=67, verified=false }
 local spooferLoaded, spooferReloading = false, false
 local function runSpoofer()
     if spooferLoaded then return end; spooferLoaded = true
@@ -473,7 +470,7 @@ local function runSpoofer()
     getgenv().Config = {
         victim = victimID,
         helper = Features.spooferSettings.helper or "",
-        level = Features.spooferSettings.level or 67,
+        level = 67,
         streak = Features.spooferSettings.streak or 67,
         elo = Features.spooferSettings.elo or 0,
         keys = Features.spooferSettings.keys or 67,
@@ -526,8 +523,7 @@ function Features.setStretchRes(on)
         end
     else
         if stretchResConnection then stretchResConnection:Disconnect(); stretchResConnection = nil end
-    end
-end
+    end end
 
 -- KEYBINDS
 local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
@@ -836,7 +832,7 @@ local function renderFun()
     victimInput.TextColor3=C.text;victimInput.BackgroundColor3=C.activeDim
     victimInput.Font=FONT;victimInput.TextSize=12;victimInput.BorderSizePixel=0
     mkCorner(victimInput,CR_SM);mkStroke(victimInput,C.accent,0,1)
-    victimInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(victimInput.Text)if num then s.victim=math.floor(num);Features.reloadSpoofer()end end end)
+    victimInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(victimInput.Text) if num then s.victim=math.floor(num);Features.reloadSpoofer() end end end)
     
     local streakRow=mkRow("Win Streak",lo,52);lo+=1
     mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
@@ -847,7 +843,7 @@ local function renderFun()
     streakInput.TextColor3=C.text;streakInput.BackgroundColor3=C.activeDim
     streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
     mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
-    streakInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(streakInput.Text)if num then s.streak=math.floor(num);Features.reloadSpoofer()end end end)
+    streakInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(streakInput.Text) if num then s.streak=math.floor(num);Features.reloadSpoofer() end end end)
     
     createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.verified,onChange=function(on)s.verified=on;Features.reloadSpoofer()end});lo+=1
     
@@ -889,7 +885,7 @@ local function renderFun()
     stretchInput.Text=tostring(Features.stretchResValue);stretchInput.TextColor3=C.text
     stretchInput.BackgroundColor3=C.activeDim;stretchInput.Font=FONT;stretchInput.TextSize=12;stretchInput.BorderSizePixel=0
     mkCorner(stretchInput,CR_SM);mkStroke(stretchInput,C.accent,0,1)
-    stretchInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(stretchInput.Text)if num and num>=0 and num<=1 then Features.stretchResValue=num end end end)
+    stretchInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(stretchInput.Text) if num and num>=0 and num<=1 then Features.stretchResValue=num end end end)
 end
 
 local function renderConfig()
