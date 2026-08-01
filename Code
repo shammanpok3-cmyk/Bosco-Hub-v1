@@ -552,11 +552,26 @@ if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
     loadConfig(saved["__autoLoad"])
 end
 
+task.wait(1)
+local saved = getAllConfigs()
+if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
+    showToast("Loading config: " .. saved["__autoLoad"])
+    loadConfig(saved["__autoLoad"])
+else
+    showToast("No auto-load config set")
+end
 -- Auto execute on teleport
 if queue_on_teleport then
     if saved["__autoLoadEnabled"] then
         queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code"))()]])
     end
+end
+
+local test = getAllConfigs()
+if test and next(test) then
+    showToast("Config loaded: " .. #next(test) .. " entries")
+else
+    showToast("No config found - using defaults")
 end
 
 -- ═══════════════════════════════════════════════════════
