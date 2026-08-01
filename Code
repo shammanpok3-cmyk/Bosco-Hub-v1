@@ -208,7 +208,7 @@ end)
 
 -- AIMBOT
 Features.aimbotEnabled = false
-Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80 }
+Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80, PostKillInertia=true }
 local function getAdaptiveSpeed(baseSpeed)
     local sens = UIS.MouseDeltaSensitivity or 0.5
     local multiplier = 0.5 / math.max(sens, 0.01)
@@ -293,7 +293,12 @@ local function moveMouseToTarget(targetScreenPos,overrideSpeed)
     local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local delta=targetScreenPos-cm; local dist=delta.Magnitude
     if dist<2 then return true end
     local speed = getAdaptiveSpeed(overrideSpeed or Features.aimbotSettings.AimSpeed)
-    local moveAmount = math.min(dist * 0.6, speed * 2)
+    local distMult
+    if dist < 30 then distMult = 0.65
+    elseif dist < 80 then distMult = 0.80
+    elseif dist < 200 then distMult = 0.90
+    else distMult = 1.0 end
+    local moveAmount = math.min(dist * 0.6, speed * 2) * distMult
     local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
     return false
 end
@@ -303,7 +308,14 @@ local function handleAutoFire(targetScreenPos)
     if dist<20 then
         if not onTargetTime then onTargetTime=now end
         if now-onTargetTime >= Features.aimbotSettings.AutoFireDelay then
-            if Features.aimbotSettings.AutoFireHold then mouse1press() else mouse1press(); task.wait(0.01); mouse1release(); onTargetTime=now end
+            if Features.aimbotSettings.AutoFireHold then mouse1press() else 
+                mouse1press(); task.wait(0.01); mouse1release(); onTargetTime=now
+                if Features.aimbotSettings.PostKillInertia then
+                    local driftX = (math.random() - 0.5) * 10
+                    local driftY = math.random(2, 6)
+                    mousemoverel(driftX, driftY)
+                end
+            end
         end
     else onTargetTime=nil; if Features.aimbotSettings.AutoFireHold then mouse1release() end end
 end
@@ -332,7 +344,7 @@ function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbo
 
 -- FLICK
 Features.flickEnabled = false
-Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true }
+Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true, OvershootChance=15 }
 local isFlicking, flickFovCircle = false, nil
 local function updateFlickFOV()
     if not Features.flickSettings.ShowFOV then if flickFovCircle then flickFovCircle.Visible=false end; return end
@@ -348,8 +360,7 @@ local function doFlick()
     local cam = Camera; local s = Features.flickSettings
     local adsMultiplier = 1
     if Features.aimbotSettings.ADSEnabled and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local adsVal = math.max(Features.aimbotSettings.ADSMultiplier or 100, 1)
-        adsMultiplier = 100 / adsVal
+        local adsVal = math.max(Features.aimbotSettings.ADSMultiplier or 100, 1); adsMultiplier = 100 / adsVal
     end
     if cam then
         local bestDist = s.FOV
@@ -365,8 +376,7 @@ local function doFlick()
             if Features.aimbotSettings.Prediction then
                 local vel = head.AssemblyLinearVelocity
                 if vel.Magnitude > 0.5 then
-                    local distance = (cam.CFrame.Position - head.Position).Magnitude
-                    local bulletSpeed = 450
+                    local distance = (cam.CFrame.Position - head.Position).Magnitude; local bulletSpeed = 450
                     local c = LP.Character
                     if c then local t = c:FindFirstChildOfClass("Tool")
                         if t then local cfg = t:FindFirstChild("Configuration") or t:FindFirstChild("Stats")
@@ -388,17 +398,37 @@ local function doFlick()
     if not targetHead then UIS.MouseBehavior = savedMouseBehavior; isFlicking = false; return end
     local dx = (targetScreenPos.X - mx) * adsMultiplier
     local dy = (targetScreenPos.Y - my) * adsMultiplier
-    mousemoverel(dx * 0.4, dy * 0.4); task.wait(0.002)
-    mousemoverel(dx * 0.35, dy * 0.35); task.wait(0.002)
-    mousemoverel(dx * 0.20, dy * 0.20); task.wait(0.001)
+    local dist = math.sqrt(dx*dx + dy*dy)
+    local distMult
+    if dist < 50 then distMult = 0.80
+    elseif dist < 150 then distMult = 0.90
+    elseif dist < 300 then distMult = 0.95
+    else distMult = 1.0 end
+    mousemoverel(dx * 0.4 * distMult, dy * 0.4 * distMult); task.wait(0.002)
+    mousemoverel(dx * 0.35 * distMult, dy * 0.35 * distMult); task.wait(0.002)
+    mousemoverel(dx * 0.20 * distMult, dy * 0.20 * distMult); task.wait(0.001)
     local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
-    mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
+    local overshootChance = s.OvershootChance or 15
+    if math.random(1, 100) <= overshootChance then
+        local angle = math.random() * math.pi * 2
+        local overshootDist = math.random(5, 10)
+        mousemoverel(math.cos(angle) * overshootDist, math.sin(angle) * overshootDist)
+        task.wait(0.05)
+        local pullX = targetScreenPos.X - UIS:GetMouseLocation().X
+        local pullY = targetScreenPos.Y - UIS:GetMouseLocation().Y
+        mousemoverel(pullX, pullY)
+    else
+        mousemoverel(targetScreenPos.X - cx, targetScreenPos.Y - cy)
+    end
     mouse1press(); mouse1release()
     UIS.MouseBehavior = savedMouseBehavior
+    local driftX = (math.random() - 0.5) * 15; local driftY = math.random(3, 8)
+    mousemoverel(driftX, driftY)
+    task.wait(0.04)
     local rx = -(targetScreenPos.X - mx); local ry = -(targetScreenPos.Y - my)
-    mousemoverel(rx * 0.5 * 0.9, ry * 0.5 * 0.9); task.wait(0.002)
-    mousemoverel(rx * 0.3 * 0.7, ry * 0.3 * 0.7); task.wait(0.002)
-    mousemoverel(rx * 0.2 * 0.5, ry * 0.2 * 0.5)
+    mousemoverel(rx * 0.4, ry * 0.4); task.wait(0.02)
+    mousemoverel(rx * 0.3, ry * 0.3); task.wait(0.02)
+    mousemoverel(rx * 0.2, ry * 0.2)
     isFlicking = false
 end
 RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
@@ -420,6 +450,64 @@ function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then un
 function Features.setSkinChanger(on) Features.skinChangerEnabled = on; if on then skinChangerLoaded = false; runSkinChanger() end end
 LP.CharacterAdded:Connect(function() if Features.skinChangerEnabled then skinChangerLoaded = false; runSkinChanger() end end)
 
+-- STAFF DETECTOR
+Features.staffDetectorEnabled = false
+local staffLoaded = false
+local function runStaffDetector()
+    if staffLoaded then return end; staffLoaded = true
+    shared.StaffDetectorLoading = false; autoload = true; autoleave = false
+    loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Ukrubojvo/Modules/main/StaffDetector.lua"))()
+end
+function Features.setStaffDetector(on) Features.staffDetectorEnabled = on; if on then staffLoaded = false; runStaffDetector() end end
+LP.CharacterAdded:Connect(function() if Features.staffDetectorEnabled then staffLoaded = false; runStaffDetector() end end)
+
+-- SPOOFER
+Features.spooferEnabled = false
+Features.spooferSettings = { victim=20349956, helper="", level=67, streak=67, elo=0, keys=67, verified=false, platform="VR" }
+local spooferLoaded, spooferReloading = false, false
+local function runSpoofer()
+    if spooferLoaded then return end; spooferLoaded = true
+    getgenv().Config = {
+        victim = Features.spooferSettings.victim or 20349956,
+        helper = Features.spooferSettings.helper or "",
+        level = Features.spooferSettings.level or 67,
+        streak = Features.spooferSettings.streak or 67,
+        elo = Features.spooferSettings.elo or 0,
+        keys = Features.spooferSettings.keys or 67,
+        premium = false,
+        verified = Features.spooferSettings.verified or false,
+        unlockall = false,
+        platform = Features.spooferSettings.platform or "VR",
+        join = "discord.gg/rivalscomp"
+    }
+    loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/ab95af5e8df41b1c817329fcd4e97840/raw/2865e050e0d160c7aa7e4e862f9cf59eed41ca2a/gistfile1.txt"))()
+end
+function Features.setSpoofer(on)
+    Features.spooferEnabled = on
+    if on then spooferLoaded = false; runSpoofer() end
+end
+function Features.reloadSpoofer()
+    if not Features.spooferEnabled or spooferReloading then return end
+    spooferReloading = true
+    Features.setSpoofer(false)
+    task.wait(0.5)
+    Features.setSpoofer(true)
+    task.wait(0.5)
+    spooferReloading = false
+end
+
+-- DEVICE SPOOFER
+local SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
+local function spoofDevice(device)
+    SetControlsRemote:FireServer("MouseKeyboard")
+    task.wait(0.3)
+    SetControlsRemote:FireServer(device)
+end
+local autoSpoofDevice = nil
+LP.CharacterAdded:Connect(function()
+    if autoSpoofDevice then task.wait(1); spoofDevice(autoSpoofDevice) end
+end)
+
 -- KEYBINDS
 local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
 local function keyName(kc) if kc == nil then return "None" end; if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
@@ -436,7 +524,7 @@ local function saveConfigsToFile(configs) if writefile then pcall(function() wri
 local function saveConfig(name, overwrite)
     local configs = getAllConfigs()
     if configs[name] and not overwrite then return false, "Config exists!" end
-    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, keybinds=Keybinds }
+    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, keybinds=Keybinds }
     saveConfigsToFile(configs); return true, "Saved!"
 end
 local function loadConfig(name)
@@ -453,6 +541,10 @@ local function loadConfig(name)
     if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
     if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end
     if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end
+    if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end
+    if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end
+    if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
+    if data.autoSpoofDevice ~= nil then autoSpoofDevice = data.autoSpoofDevice end
     if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] and v.key then Keybinds[k] = v end end end
     return true, "Loaded!"
 end
@@ -473,7 +565,7 @@ if queue_on_teleport then
 end
 
 -- ═══════════════════════════════════════════════════════
---  UI (BH Logo + Fixed Settings)
+--  UI (BH Logo + All Pages)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -649,6 +741,7 @@ local function renderAimbot()
     createToggle({title="ADS Enabled",desc="Adjust aim speed when ADSing",layoutOrder=lo,default=s.ADSEnabled,onChange=function(on)s.ADSEnabled=on end});lo+=1
     createDualSlider({title="ADS Multiplier %",desc="10% = fastest | 100% = normal | 200% = slowest",layoutOrder=lo,default=s.ADSMultiplier or 80,min=10,max=200,onChange=function(v)s.ADSMultiplier=v end});lo+=1
     createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=s.AutoFire,onChange=function(on)s.AutoFire=on end});lo+=1
+    createToggle({title="Post-Shot Inertia",desc="Natural mouse drift after shooting",layoutOrder=lo,default=s.PostKillInertia or false,onChange=function(on)s.PostKillInertia=on end});lo+=1
 end
 
 local function renderSilentAim()
@@ -669,6 +762,7 @@ local function renderFlick()
     createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
     createDualSlider({title="Speed",desc="Flick speed multiplier",layoutOrder=lo,default=s.Speed,min=5,max=50,onChange=function(v)s.Speed=v end});lo+=1
     createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createDualSlider({title="Overshoot Chance %",desc="Chance to overshoot then correct (looks legit)",layoutOrder=lo,default=s.OvershootChance or 15,min=0,max=100,onChange=function(v)s.OvershootChance=v end});lo+=1
     createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
     createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
     createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
@@ -696,6 +790,71 @@ local function renderUnlockAll()
     secHead("🎨 Cosmetics",lo);lo+=1
     createActionRow({title="Unlock All Cosmetics",desc="Press to unlock all skins",layoutOrder=lo,buttonText="🔓 UNLOCK",onClick=function()Features.setUnlockAll(true);showToast("Unlocking...")end});lo+=1
     createToggle({title="Auto Skin Changer",desc="Auto-load skin changer on join/teleport",layoutOrder=lo,default=Features.skinChangerEnabled,onChange=function(on)Features.setSkinChanger(on);if on then showToast("Skin changer will auto-load!")end end});lo+=1
+end
+
+local function renderStaffDetector()
+    clearContent();local lo=1
+    secHead("🛡 Staff Detector",lo);lo+=1
+    createToggle({title="Enable Staff Detector",desc="Warns when Rivals moderators join",layoutOrder=lo,default=Features.staffDetectorEnabled,onChange=function(on)Features.setStaffDetector(on);if on then showToast("Staff Detector active!")end end});lo+=1
+    createToggle({title="Auto Leave",desc="Instantly leave if mod detected",layoutOrder=lo,default=false,onChange=function(on)autoleave=on end});lo+=1
+end
+
+local function renderFun()
+    clearContent();local lo=1;local s=Features.spooferSettings
+    secHead("🎭 Spoofer",lo);lo+=1
+    
+    createToggle({title="Enable Spoofer",desc="Impersonate another player",layoutOrder=lo,default=Features.spooferEnabled,onChange=function(on)Features.setSpoofer(on)end});lo+=1
+    
+    -- Victim UserID
+    local victimRow=mkRow("Victim UserID",lo,52);lo+=1
+    mkLabel({Parent=victimRow,Text="Victim UserID",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    mkLabel({Parent=victimRow,Text="Roblox user ID to copy",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
+    local victimInput=Instance.new("TextBox",victimRow)
+    victimInput.Size=UDim2.fromOffset(100,26);victimInput.Position=UDim2.new(1,-100,0.5,-13)
+    victimInput.Text=tostring(s.victim);victimInput.PlaceholderText="UserID"
+    victimInput.TextColor3=C.text;victimInput.BackgroundColor3=C.activeDim
+    victimInput.Font=FONT;victimInput.TextSize=12;victimInput.BorderSizePixel=0
+    mkCorner(victimInput,CR_SM);mkStroke(victimInput,C.accent,0,1)
+    victimInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(victimInput.Text)if num then s.victim=math.floor(num);Features.reloadSpoofer()end end end)
+    
+    -- Win Streak
+    local streakRow=mkRow("Win Streak",lo,52);lo+=1
+    mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    mkLabel({Parent=streakRow,Text="Fake win streak number",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
+    local streakInput=Instance.new("TextBox",streakRow)
+    streakInput.Size=UDim2.fromOffset(100,26);streakInput.Position=UDim2.new(1,-100,0.5,-13)
+    streakInput.Text=tostring(s.streak);streakInput.PlaceholderText="Streak"
+    streakInput.TextColor3=C.text;streakInput.BackgroundColor3=C.activeDim
+    streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
+    mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
+    streakInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(streakInput.Text)if num then s.streak=math.floor(num);Features.reloadSpoofer()end end end)
+    
+    createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.verified,onChange=function(on)s.verified=on;Features.reloadSpoofer()end});lo+=1
+    
+    mkSep(mainScroll,lo);lo+=1
+    secHead("📱 Device Spoofer",lo);lo+=1
+    
+    local devices={{"Mouse & Keyboard","MouseKeyboard"},{"Gamepad","Gamepad"},{"Mobile (Touch)","Touch"},{"VR","VR"}}
+    for _,device in ipairs(devices)do
+        local row=mkRow(device[1],lo,52);lo+=1
+        local info=Instance.new("Frame",row);info.BackgroundTransparency=1;info.Size=UDim2.new(0,140,1,0)
+        mkLabel({Parent=info,Text=device[1],Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+        local spoofBtn=Instance.new("TextButton",row)
+        spoofBtn.Size=UDim2.fromOffset(48,28);spoofBtn.Position=UDim2.new(1,-56,0.5,-14)
+        spoofBtn.Text="🔁";spoofBtn.Font=FONT_BOL;spoofBtn.TextSize=12;spoofBtn.TextColor3=C.text
+        spoofBtn.BackgroundColor3=C.activeDim;spoofBtn.AutoButtonColor=false;spoofBtn.BorderSizePixel=0
+        mkCorner(spoofBtn,CR_SM)
+        spoofBtn.MouseButton1Click:Connect(function()spoofDevice(device[2]);showToast("Spoofed: "..device[1])end)
+        local autoBtn=Instance.new("TextButton",row)
+        autoBtn.Size=UDim2.fromOffset(48,28);autoBtn.Position=UDim2.new(1,0,0.5,-14)
+        autoBtn.Text="🔄";autoBtn.Font=FONT_BOL;autoBtn.TextSize=12;autoBtn.TextColor3=C.text
+        autoBtn.BackgroundColor3=autoSpoofDevice==device[2]and C.accent or C.activeDim;autoBtn.AutoButtonColor=false;autoBtn.BorderSizePixel=0
+        mkCorner(autoBtn,CR_SM)
+        autoBtn.MouseButton1Click:Connect(function()
+            if autoSpoofDevice==device[2]then autoSpoofDevice=nil;autoBtn.BackgroundColor3=C.activeDim;showToast("Auto-spoof OFF")
+            else autoSpoofDevice=device[2];autoBtn.BackgroundColor3=C.accent;showToast("Auto-spoof: "..device[1])end
+        end)
+    end
 end
 
 local function renderConfig()
@@ -837,9 +996,15 @@ mkSep(sbScroll,11)
 mkNavHdr("🎨 COSMETICS",12)
 mkNav("Unlock All",13,renderUnlockAll)
 mkSep(sbScroll,14)
-mkNavHdr("⚙ SETTINGS",15)
-mkNav("Config",16,renderConfig)
-mkNav("Keybinds",17,renderKeybinds)
+mkNavHdr("🛡 PROTECTION",15)
+mkNav("Staff Detector",16,renderStaffDetector)
+mkSep(sbScroll,17)
+mkNavHdr("🎭 FUN",18)
+mkNav("Spoofer",19,renderFun)
+mkSep(sbScroll,20)
+mkNavHdr("⚙ SETTINGS",21)
+mkNav("Config",22,renderConfig)
+mkNav("Keybinds",23,renderKeybinds)
 
 renderAimbot()
 if navBtns["Aimbot"]then setNavActive(navBtns["Aimbot"])end
