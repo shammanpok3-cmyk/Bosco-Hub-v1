@@ -415,8 +415,7 @@ local function runUnlockAll()
     pcall(function() loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))() end)
 end
 local function runSkinChanger()
-    pcall(function() loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))() end)
-    if queue_on_teleport then queue_on_teleport([[loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))()]]) end
+    loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))()
 end
 function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then unlockRan = false; runUnlockAll() end end
 function Features.setSkinChanger(on) Features.skinChangerEnabled = on; if on then runSkinChanger() end end
