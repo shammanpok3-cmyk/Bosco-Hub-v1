@@ -533,6 +533,11 @@ pcall(function()
     if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
         loadConfig(saved["__autoLoad"])
     end
+end)
+
+-- Run skin changer after UI loads
+task.spawn(function()
+    task.wait(5)
     if Features.skinChangerEnabled then runSkinChanger() end
 end)
 
