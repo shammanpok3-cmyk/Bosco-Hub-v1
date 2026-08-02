@@ -459,7 +459,6 @@ end
 local SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
 local function spoofDevice(device) SetControlsRemote:FireServer("MouseKeyboard"); task.wait(0.3); SetControlsRemote:FireServer(device) end
 local autoSpoofDevice = nil
-LP.CharacterAdded:Connect(function() if autoSpoofDevice then task.wait(1); spoofDevice(autoSpoofDevice) end end)
 
 -- STRETCH RES
 Features.stretchResEnabled = false
@@ -534,6 +533,7 @@ pcall(function()
     if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
         loadConfig(saved["__autoLoad"])
     end
+    if Features.skinChangerEnabled then runSkinChanger() end
 end)
 
 -- Auto execute on teleport (safe)
