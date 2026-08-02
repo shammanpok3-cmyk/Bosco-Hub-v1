@@ -483,7 +483,7 @@ end
 local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
 local function keyName(kc) if kc == nil then return "None" end; if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
 
--- CONFIG SYSTEM
+-- CONFIG SYSTEM (safe)
 local configFileName = "BoscoHub_Configs.json"
 local function getAllConfigs()
     if not isfile or not readfile then return {} end
@@ -497,7 +497,7 @@ local function saveConfig(name, overwrite)
     if configs[name] and not overwrite then return false, "Config exists!" end
     local keybindsCopy = {}
     for k, v in pairs(Keybinds) do
-        keybindsCopy[k] = { key = v.key.Name, holdMode = v.holdMode, label = v.label }
+        pcall(function() keybindsCopy[k] = { key = v.key.Name, holdMode = v.holdMode, label = v.label } end)
     end
     configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=keybindsCopy }
     saveConfigsToFile(configs); return true, "Saved!"
@@ -527,19 +527,24 @@ local function loadConfig(name)
 end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
--- Auto-load config on join
+-- Auto-load config on join (safe)
 task.wait(1)
-local saved = getAllConfigs()
-if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
-    loadConfig(saved["__autoLoad"])
-end
-
--- Auto execute on teleport
-if queue_on_teleport then
-    if saved["__autoLoadEnabled"] then
-        queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code"))()]])
+pcall(function()
+    local saved = getAllConfigs()
+    if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
+        loadConfig(saved["__autoLoad"])
     end
-end
+end)
+
+-- Auto execute on teleport (safe)
+pcall(function()
+    if queue_on_teleport then
+        local saved = getAllConfigs()
+        if saved["__autoLoadEnabled"] then
+            queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code"))()]])
+        end
+    end
+end)
 
 -- ═══════════════════════════════════════════════════════
 --  UI (BH Logo + All Pages)
