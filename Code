@@ -16,25 +16,12 @@ local LP = Players.LocalPlayer
 local PGui = LP:WaitForChild("PlayerGui")
 local Camera = Workspace.CurrentCamera
 
--- TEAM CHECK
-local Teammates = {}
-LP.CharacterAdded:Connect(function(char)
-    task.wait(0.3)
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    Teammates = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LP and player.Character then
-            local otherRoot = player.Character:FindFirstChild("HumanoidRootPart")
-            if otherRoot then
-                if (root.Position - otherRoot.Position).Magnitude <= 96.7 then
-                    Teammates[player.UserId] = true
-                end
-            end
-        end
-    end
-end)
-local function isTeammate(player) return player and Teammates[player.UserId] == true end
+-- TEAM CHECK (Auto TeamID)
+local function isTeammate(player)
+    if not player then return false end
+    if player:GetAttribute("TeamID") == LP:GetAttribute("TeamID") then return true end
+    return false
+end
 
 -- UTILITY
 local rayParams = RaycastParams.new()
@@ -125,56 +112,91 @@ function Features.setESPSetting(k,v) Features.espSettings[k]=v; if Features.espE
 Players.PlayerRemoving:Connect(removeESP)
 LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
 
--- SILENT AIM
+-- SILENT AIM (Gun Hook Method)
 Features.silentAimEnabled = false
 Features.silentAimSettings = { FOV=300, MaxDistance=500, HitPart="Head", TeamCheck=true, ShowFOV=true }
-local silentAimHooked, originalRaycast, silentFovCircle = false, nil, nil
+local silentAimHooked = false
+local silentFovCircle = nil
+
 local function setupSilentAim()
     if silentAimHooked then return end
-    local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
-    if not modules then return end
-    local utility = modules:FindFirstChild("Utility")
-    if not utility then return end
-    local utilityModule = require(utility)
-    if not utilityModule or not utilityModule.Raycast then return end
-    originalRaycast = utilityModule.Raycast
-    utilityModule.Raycast = function(self, origin, direction, maxDistance, ...)
-        if not Features.silentAimEnabled then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        if type(maxDistance) ~= "number" or maxDistance < 100 then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        local cam = Camera; if not cam then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        local mp = UIS:GetMouseLocation(); local center = Vector2.new(mp.X, mp.Y)
-        local bestPart, bestD = nil, Features.silentAimSettings.FOV
-        for _, entity in CollectionService:GetTagged("Entity") do
-            if entity == LP.Character then continue end
-            local player = Players:GetPlayerFromCharacter(entity)
-            if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
-            local hum = entity:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health <= 0 then continue end
-            local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
-            if not part or not part:IsA("BasePart") then continue end
-            if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
-            local sp, onScreen = cam:WorldToViewportPoint(part.Position)
-            if not onScreen then continue end
-            local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-            if d < bestD then bestD = d; bestPart = part end
-        end
-        if not bestPart then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        local targetPos = bestPart.Position
-        local dir = (targetPos - origin).Unit
-        local dist = (targetPos - origin).Magnitude
-        if dist > maxDistance then dist = maxDistance; targetPos = origin + (dir * maxDistance) end
-        return { Position=targetPos, Distance=dist, Instance=bestPart, Material=bestPart.Material, Normal=-dir }
-    end
     silentAimHooked = true
+    
+    pcall(function()
+        local Gun = require(LP.PlayerScripts.Modules.ItemTypes.Gun)
+        local Utility = require(game:GetService("ReplicatedStorage").Modules.Utility)
+        local originalStartShooting = Gun.StartShooting
+        
+        Gun.StartShooting = function(self, ...)
+            local results = {originalStartShooting(self, ...)}
+            
+            if not self.ClientFighter or not self.ClientFighter.IsLocalPlayer then
+                return unpack(results)
+            end
+            
+            if not Features.silentAimEnabled then
+                return unpack(results)
+            end
+            
+            local shotData = results[3]
+            if not shotData or typeof(shotData) ~= "table" then
+                return unpack(results)
+            end
+            
+            local cam = Camera
+            if not cam then return unpack(results) end
+            
+            local mp = UIS:GetMouseLocation()
+            local center = Vector2.new(mp.X, mp.Y)
+            local bestPart, bestDist = nil, Features.silentAimSettings.FOV
+            
+            for _, entity in CollectionService:GetTagged("Entity") do
+                if entity == LP.Character then continue end
+                local player = Players:GetPlayerFromCharacter(entity)
+                if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
+                local hum = entity:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health <= 0 then continue end
+                local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
+                if not part or not part:IsA("BasePart") then continue end
+                if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
+                local sp, onScreen = cam:WorldToViewportPoint(part.Position)
+                if not onScreen then continue end
+                local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                if d < bestDist then bestDist = d; bestPart = part end
+            end
+            
+            if not bestPart then return unpack(results) end
+            
+            local headPos = bestPart.Position
+            local origin = cam.CFrame.Position
+            results[3] = Utility:EncodeCFrame(CFrame.new(origin, headPos))
+            
+            return unpack(results)
+        end
+    end)
 end
-function Features.setSilentAim(on) Features.silentAimEnabled = on; if on then setupSilentAim() end end
+
+function Features.setSilentAim(on)
+    Features.silentAimEnabled = on
+    if on then setupSilentAim() end
+end
+
 RunService.RenderStepped:Connect(function()
     if not hasDrawing then return end
     if Features.silentAimEnabled and Features.silentAimSettings.ShowFOV then
-        if not silentFovCircle then silentFovCircle = Drawing.new("Circle"); silentFovCircle.Thickness = 1.2; silentFovCircle.NumSides = 100; silentFovCircle.Filled = false; silentFovCircle.ZIndex = 999; silentFovCircle.Transparency = 0.3; silentFovCircle.Color = Color3.fromRGB(100, 200, 255) end
-        silentFovCircle.Visible = true; silentFovCircle.Radius = Features.silentAimSettings.FOV
-        local mp = UIS:GetMouseLocation(); silentFovCircle.Position = Vector2.new(mp.X, mp.Y)
-    elseif silentFovCircle then silentFovCircle.Visible = false end
+        if not silentFovCircle then
+            silentFovCircle = Drawing.new("Circle")
+            silentFovCircle.Thickness = 1.2; silentFovCircle.NumSides = 100
+            silentFovCircle.Filled = false; silentFovCircle.ZIndex = 999; silentFovCircle.Transparency = 0.3
+            silentFovCircle.Color = Color3.fromRGB(100, 200, 255)
+        end
+        silentFovCircle.Visible = true
+        silentFovCircle.Radius = Features.silentAimSettings.FOV
+        local mp = UIS:GetMouseLocation()
+        silentFovCircle.Position = Vector2.new(mp.X, mp.Y)
+    elseif silentFovCircle then
+        silentFovCircle.Visible = false
+    end
 end)
 
 -- AIMBOT
@@ -187,7 +209,7 @@ local function getAdaptiveSpeed(baseSpeed)
         local adsVal = math.max(Features.aimbotSettings.ADSMultiplier or 100, 1)
         multiplier = multiplier * (100 / adsVal)
     end
-    return baseSpeed * multiplier * 15
+    return baseSpeed * multiplier * 5
 end
 local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
 local function createTargetIndicator()
@@ -270,7 +292,7 @@ local function moveMouseToTarget(targetScreenPos,overrideSpeed)
     elseif dist < 80 then distMult = 0.80
     elseif dist < 200 then distMult = 0.90
     else distMult = 1.0 end
-    local moveAmount = math.min(speed * 0.8, dist * 0.9) * distMult
+    local moveAmount = math.min(speed * 0.8, dist * 0.95) * distMult
     local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
     return false
 end
@@ -314,7 +336,7 @@ local function startAimbotLoop() if aimbotConnection then return end; aimbotConn
 local function stopAimbotLoop() if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection=nil end; lockedTarget=nil; targetPlayer=nil; onTargetTime=nil; mouse1release(); if fovCircle then fovCircle.Visible=false end; if targetIndicator then targetIndicator.Enabled=false end end
 function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbotLoop() else stopAimbotLoop() end end
 
--- FLICK (Fixed)
+-- FLICK (Instant Snap)
 Features.flickEnabled = false
 Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true }
 local isFlicking, flickFovCircle = false, nil
@@ -328,7 +350,6 @@ end
 function Features.setFlick(on) Features.flickEnabled=on; if on then setupSilentAim() end end
 local function doFlick()
     if isFlicking then return end; isFlicking = true
-    local totalDX, totalDY = 0, 0
     local targetHead = nil
     local cam = Camera; local s = Features.flickSettings
     if cam then
@@ -365,58 +386,354 @@ local function doFlick()
         end
     end
     if not targetHead then isFlicking = false; return end
-    local speedMult = s.Speed / 25
-    local phase1Speed = 0.67 * speedMult
-    for i = 1, 2 do
-        local sp, on = cam:WorldToViewportPoint(targetHead.Position)
-        if not on then break end
-        local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
-        local dx, dy = sp.X - cx, sp.Y - cy
-        if math.sqrt(dx*dx + dy*dy) < 2 then break end
-        local moveX = dx * phase1Speed; local moveY = dy * phase1Speed
-        mousemoverel(moveX, moveY)
-        totalDX = totalDX + moveX; totalDY = totalDY + moveY
-        task.wait(0.003)
-    end
-    local phase2Speed = 1.0 * speedMult
-    for i = 1, 3 do
-        local sp, on = cam:WorldToViewportPoint(targetHead.Position)
-        if not on then break end
-        local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
-        local dx, dy = sp.X - cx, sp.Y - cy
-        if math.sqrt(dx*dx + dy*dy) < 2 then break end
-        local moveX = dx * phase2Speed; local moveY = dy * phase2Speed
-        mousemoverel(moveX, moveY)
-        totalDX = totalDX + moveX; totalDY = totalDY + moveY
-        task.wait(0.002)
-    end
+    
+    local startX, startY = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
     local sp, on = cam:WorldToViewportPoint(targetHead.Position)
-    if on then
-        local cx, cy = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
-        mousemoverel(sp.X - cx, sp.Y - cy)
-        totalDX = totalDX + (sp.X - cx); totalDY = totalDY + (sp.Y - cy)
-    end
+    if not on then isFlicking = false; return end
+    
+    -- Snap to head
+    local dx = sp.X - startX
+    local dy = sp.Y - startY
+    mousemoverel(dx, dy)
+    
+    -- Shoot instantly with silent aim
     local wasSilent = Features.silentAimEnabled
     Features.silentAimEnabled = true; setupSilentAim()
-    mouse1press(); task.wait(0.005)
-    mousemoverel(-totalDX, -totalDY)
-    task.wait(0.005); mouse1release()
+    mouse1press()
+    
+    -- Return immediately
+    mousemoverel(-dx, -dy)
+    mouse1release()
     Features.silentAimEnabled = wasSilent
     isFlicking = false
 end
 RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
 
--- UNLOCK ALL + SKIN CHANGER
+-- UNLOCK ALL (Unified)
 Features.unlockAllEnabled = false
 Features.skinChangerEnabled = false
 local unlockRan = false
+
 local function runUnlockAll()
     if unlockRan then return end; unlockRan = true; task.wait(3)
-    pcall(function() loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))() end)
+    pcall(function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local HttpService = game:GetService("HttpService")
+        local player = Players.LocalPlayer
+        local playerScripts = player.PlayerScripts
+        local controllers = playerScripts.Controllers
+        
+        local EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10))
+        if EnumLibrary then EnumLibrary:WaitForEnumBuilder() end
+        local CosmeticLibrary = require(ReplicatedStorage.Modules:WaitForChild("CosmeticLibrary", 10))
+        local ItemLibrary = require(ReplicatedStorage.Modules:WaitForChild("ItemLibrary", 10))
+        local DataController = require(controllers:WaitForChild("PlayerDataController", 10))
+        local equipped, favorites = {}, {}
+        local constructingWeapon, viewingProfile, lastUsedWeapon = nil, nil, nil
+        
+        local function cloneCosmetic(name, cosmeticType, options)
+            local base = CosmeticLibrary.Cosmetics[name]
+            if not base then return nil end
+            local data = {}
+            for key, value in pairs(base) do data[key] = value end
+            data.Name = name; data.Type = data.Type or cosmeticType
+            data.Seed = data.Seed or math.random(1, 1000000)
+            if EnumLibrary then
+                local s, eid = pcall(EnumLibrary.ToEnum, EnumLibrary, name)
+                if s and eid then data.Enum, data.ObjectID = eid, data.ObjectID or eid end
+            end
+            if options then
+                if options.inverted ~= nil then data.Inverted = options.inverted end
+                if options.favoritesOnly ~= nil then data.OnlyUseFavorites = options.favoritesOnly end
+            end
+            return data
+        end
+        
+        local saveFile = "unlockall/config.json"
+        local function saveConfig()
+            if not writefile then return end
+            pcall(function()
+                local config = {equipped = {}, favorites = favorites}
+                for weapon, cosmetics in pairs(equipped) do
+                    config.equipped[weapon] = {}
+                    for cosmeticType, cosmeticData in pairs(cosmetics) do
+                        if cosmeticData and cosmeticData.Name then
+                            config.equipped[weapon][cosmeticType] = {
+                                name = cosmeticData.Name, seed = cosmeticData.Seed, inverted = cosmeticData.Inverted
+                            }
+                        end
+                    end
+                end
+                makefolder("unlockall")
+                writefile(saveFile, HttpService:JSONEncode(config))
+            end)
+        end
+        
+        local function loadConfig()
+            if not readfile or not isfile or not isfile(saveFile) then return end
+            pcall(function()
+                local config = HttpService:JSONDecode(readfile(saveFile))
+                if config.equipped then
+                    for weapon, cosmetics in pairs(config.equipped) do
+                        equipped[weapon] = {}
+                        for cosmeticType, cosmeticData in pairs(cosmetics) do
+                            local cloned = cloneCosmetic(cosmeticData.name, cosmeticType, {inverted = cosmeticData.inverted})
+                            if cloned then cloned.Seed = cosmeticData.seed; equipped[weapon][cosmeticType] = cloned end
+                        end
+                    end
+                end
+                favorites = config.favorites or {}
+            end)
+        end
+        
+        local function isNotFinisher(name)
+            if not name then return false end
+            local lower = name:lower()
+            return not (lower:find("finisher") or lower:find("finish") or lower:find("execution"))
+        end
+        
+        local originalOwnsCosmetic = CosmeticLibrary.OwnsCosmetic
+        CosmeticLibrary.OwnsCosmetic = function(self, inventory, name, weapon)
+            if name:find("MISSING_") then return originalOwnsCosmetic(self, inventory, name, weapon) end
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return originalOwnsCosmetic(self, inventory, name, weapon)
+        end
+        
+        CosmeticLibrary.OwnsCosmeticNormally = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return false
+        end
+        CosmeticLibrary.OwnsCosmeticUniversally = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return false
+        end
+        CosmeticLibrary.OwnsCosmeticForWeapon = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return false
+        end
+        
+        local originalGet = DataController.Get
+        DataController.Get = function(self, key)
+            local data = originalGet(self, key)
+            if key == "CosmeticInventory" then
+                local proxy = {}
+                if data then for k, v in pairs(data) do proxy[k] = v end end
+                return setmetatable(proxy, {__index = function(t, k)
+                    local cosmetic = CosmeticLibrary.Cosmetics[k]
+                    if cosmetic and isNotFinisher(k) then return true end
+                    return nil
+                end})
+            end
+            if key == "FavoritedCosmetics" then
+                local result = data and table.clone(data) or {}
+                for weapon, favs in pairs(favorites) do
+                    result[weapon] = result[weapon] or {}
+                    for name, isFav in pairs(favs) do
+                        if isNotFinisher(name) then result[weapon][name] = isFav end
+                    end
+                end
+                return result
+            end
+            return data
+        end
+        
+        local originalGetWeaponData = DataController.GetWeaponData
+        DataController.GetWeaponData = function(self, weaponName)
+            local data = originalGetWeaponData(self, weaponName)
+            if not data then return nil end
+            local merged = {}
+            for key, value in pairs(data) do merged[key] = value end
+            merged.Name = weaponName
+            if equipped[weaponName] then
+                for cosmeticType, cosmeticData in pairs(equipped[weaponName]) do merged[cosmeticType] = cosmeticData end
+            end
+            return merged
+        end
+        
+        local FighterController
+        pcall(function() FighterController = require(controllers:WaitForChild("FighterController", 10)) end)
+        
+        if hookmetamethod then
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local dr = remotes and remotes:FindFirstChild("Data")
+            local eqR = dr and dr:FindFirstChild("EquipCosmetic")
+            local favR = dr and dr:FindFirstChild("FavoriteCosmetic")
+            local rr = remotes and remotes:FindFirstChild("Replication")
+            local fr = rr and rr:FindFirstChild("Fighter")
+            local useR = fr and fr:FindFirstChild("UseItem")
+            
+            if eqR then
+                local oldNC = hookmetamethod(game, "__namecall", function(self, ...)
+                    if getnamecallmethod() ~= "FireServer" then return oldNC(self, ...) end
+                    local args = {...}
+                    if useR and self == useR then
+                        local oid = args[1]
+                        if FighterController then
+                            pcall(function()
+                                local fighter = FighterController:GetFighter(player)
+                                if fighter and fighter.Items then
+                                    for _, item in pairs(fighter.Items) do
+                                        if item:Get("ObjectID") == oid then lastUsedWeapon = item.Name; break end
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                    if self == eqR then
+                        local wn, ct, cn, opts = args[1], args[2], args[3], args[4] or {}
+                        if ct and isNotFinisher(ct) and isNotFinisher(cn) then
+                            if cn and cn ~= "None" and cn ~= "" then
+                                local inv = DataController:Get("CosmeticInventory")
+                                if inv and rawget(inv, cn) then return oldNC(self, ...) end
+                            end
+                            equipped[wn] = equipped[wn] or {}
+                            if not cn or cn == "None" or cn == "" then
+                                equipped[wn][ct] = nil
+                                if not next(equipped[wn]) then equipped[wn] = nil end
+                            else
+                                local cloned = cloneCosmetic(cn, ct, {inverted = opts.IsInverted, favoritesOnly = opts.OnlyUseFavorites})
+                                if cloned then equipped[wn][ct] = cloned end
+                            end
+                            task.defer(function()
+                                pcall(function() DataController.CurrentData:Replicate("WeaponInventory") end)
+                                task.wait(0.2); saveConfig()
+                            end)
+                            return
+                        end
+                        return oldNC(self, ...)
+                    end
+                    if self == favR then
+                        local cosmetic = CosmeticLibrary.Cosmetics[args[2]]
+                        if cosmetic and isNotFinisher(args[2]) then
+                            favorites[args[1]] = favorites[args[1]] or {}
+                            favorites[args[1]][args[2]] = args[3] or nil
+                            saveConfig()
+                            task.spawn(function() pcall(function() DataController.CurrentData:Replicate("FavoritedCosmetics") end) end)
+                        end
+                        return
+                    end
+                    return oldNC(self, ...)
+                end)
+            end
+        end
+        
+        local ClientItem
+        pcall(function() ClientItem = require(player.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem) end)
+        if ClientItem and ClientItem._CreateViewModel then
+            local origCVM = ClientItem._CreateViewModel
+            ClientItem._CreateViewModel = function(self, vmr)
+                local wn = self.Name
+                local wp = self.ClientFighter and self.ClientFighter.Player
+                constructingWeapon = (wp == player) and wn or nil
+                if wp == player and equipped[wn] and vmr then
+                    local dk, sk, ck, wk, nk = self:ToEnum("Data"), self:ToEnum("Skin"), self:ToEnum("Charm"), self:ToEnum("Wrap"), self:ToEnum("Name")
+                    local c = equipped[wn]
+                    if vmr[dk] then
+                        if c.Skin then vmr[dk][sk] = c.Skin; vmr[dk][nk] = c.Skin.Name end
+                        if c.Charm then vmr[dk][ck] = c.Charm end
+                        if c.Wrap then vmr[dk][wk] = c.Wrap end
+                    elseif vmr.Data then
+                        if c.Skin then vmr.Data.Skin = c.Skin; vmr.Data.Name = c.Skin.Name end
+                        if c.Charm then vmr.Data.Charm = c.Charm end
+                        if c.Wrap then vmr.Data.Wrap = c.Wrap end
+                    end
+                end
+                local result = origCVM(self, vmr)
+                constructingWeapon = nil
+                return result
+            end
+        end
+        
+        local vmm = player.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
+        if vmm then
+            local ClientViewModel = require(vmm)
+            if ClientViewModel.GetCharm then
+                local origGC = ClientViewModel.GetCharm
+                ClientViewModel.GetCharm = function(self)
+                    local wn = self.ClientItem and self.ClientItem.Name
+                    local wp = self.ClientItem and self.ClientItem.ClientFighter and self.ClientItem.ClientFighter.Player
+                    if wn and wp == player and equipped[wn] and equipped[wn].Charm then return equipped[wn].Charm end
+                    return origGC(self)
+                end
+            end
+            if ClientViewModel.GetWrap then
+                local origGW = ClientViewModel.GetWrap
+                ClientViewModel.GetWrap = function(self)
+                    local wn = self.ClientItem and self.ClientItem.Name
+                    local wp = self.ClientItem and self.ClientItem.ClientFighter and self.ClientItem.ClientFighter.Player
+                    if wn and wp == player and equipped[wn] and equipped[wn].Wrap then return equipped[wn].Wrap end
+                    return origGW(self)
+                end
+            end
+            local origNew = ClientViewModel.new
+            ClientViewModel.new = function(rd, ci)
+                local wp = ci.ClientFighter and ci.ClientFighter.Player
+                local wn = constructingWeapon or ci.Name
+                if wp == player and equipped[wn] then
+                    local RC = require(ReplicatedStorage.Modules.ReplicatedClass)
+                    local dk = RC:ToEnum("Data")
+                    rd[dk] = rd[dk] or {}
+                    local c = equipped[wn]
+                    if c.Skin then rd[dk][RC:ToEnum("Skin")] = c.Skin end
+                    if c.Charm then rd[dk][RC:ToEnum("Charm")] = c.Charm end
+                    if c.Wrap then rd[dk][RC:ToEnum("Wrap")] = c.Wrap end
+                end
+                local result = origNew(rd, ci)
+                if wp == player and equipped[wn] and equipped[wn].Wrap and result._UpdateWrap then
+                    result:_UpdateWrap()
+                    task.delay(0.1, function() if not result._destroyed then result:_UpdateWrap() end end)
+                end
+                return result
+            end
+        end
+        
+        local origGVI = ItemLibrary.GetViewModelImageFromWeaponData
+        ItemLibrary.GetViewModelImageFromWeaponData = function(self, wd, hr)
+            if not wd then return origGVI(self, wd, hr) end
+            local wn = wd.Name
+            if equipped[wn] and equipped[wn].Skin then
+                local si = self.ViewModels[equipped[wn].Skin.Name]
+                if si then return si[hr and "ImageHighResolution" or "Image"] or si.Image end
+            end
+            return origGVI(self, wd, hr)
+        end
+        
+        pcall(function()
+            local EmoteController = require(controllers:WaitForChild("EmoteController", 10))
+            if EmoteController and EmoteController.GetEmotes then
+                local origGE = EmoteController.GetEmotes
+                EmoteController.GetEmotes = function(self)
+                    local emotes = origGE(self)
+                    for name, cosmetic in pairs(CosmeticLibrary.Cosmetics) do
+                        if cosmetic and isNotFinisher(name) and (cosmetic.Type == "Dance" or cosmetic.Type == "Emote" or name:lower():find("dance") or name:lower():find("emote")) then
+                            if not emotes[name] then
+                                emotes[name] = {Name = name, Type = cosmetic.Type, ObjectID = cosmetic.ObjectID, Enum = cosmetic.Enum}
+                            end
+                        end
+                    end
+                    return emotes
+                end
+            end
+        end)
+        
+        pcall(function()
+            local ViewProfile = require(player.PlayerScripts.Modules.Pages.ViewProfile)
+            if ViewProfile and ViewProfile.Fetch then
+                local origF = ViewProfile.Fetch
+                ViewProfile.Fetch = function(self, tp) viewingProfile = tp; return origF(self, tp) end
+            end
+        end)
+        
+        loadConfig()
+    end)
 end
-local function runSkinChanger()
-    loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/cd3c2201a3c79e7e8576f60943648fb621ca56fe/gistfile1.txt"))()
-end
+
+local function runSkinChanger() end
+
 function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then unlockRan = false; runUnlockAll() end end
 function Features.setSkinChanger(on) Features.skinChangerEnabled = on; if on then runSkinChanger() end end
 
@@ -551,7 +868,7 @@ pcall(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  UI (BH Logo + All Pages)
+--  UI (Logo + All Pages)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -604,16 +921,16 @@ local sbScroll=Instance.new("ScrollingFrame");sbScroll.BackgroundTransparency=1;
 mkPad(sbScroll,12,10,12,10)
 local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,4);sbLL.SortOrder=Enum.SortOrder.LayoutOrder;sbLL.Parent=sbScroll
 
--- BH ASCII Logo
+-- Logo
 local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,100);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
 local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,2);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
-mkLabel({Parent=brandBlock,Text="██████╗  ██╗  ██╗",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=1})
-mkLabel({Parent=brandBlock,Text="██╔══██╗ ██║  ██║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=2})
-mkLabel({Parent=brandBlock,Text="██████╔╝ ███████║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=3})
-mkLabel({Parent=brandBlock,Text="██╔══██╗ ██╔══██║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=4})
-mkLabel({Parent=brandBlock,Text="██████╔╝ ██║  ██║",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=5})
-mkLabel({Parent=brandBlock,Text="╚═════╝  ╚═╝  ╚═╝",Font=Enum.Font.Code,TextSize=10,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,14),LayoutOrder=6})
-mkLabel({Parent=brandBlock,Text="V1  |  Bosco Hub",Font=FONT_BOL,TextSize=10,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=7})
+local logo=Instance.new("ImageLabel",brandBlock)
+logo.Size=UDim2.new(0,60,0,60);logo.BackgroundTransparency=1
+logo.Image="rbxassetid://97453625372680"
+logo.ScaleType=Enum.ScaleType.Fit
+logo.LayoutOrder=1
+mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
+mkLabel({Parent=brandBlock,Text="V1  |  by Bosco",Font=FONT_BOL,TextSize=10,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=3})
 
 local navBtns={};local activeNav=nil
 local function setNavActive(btn)if activeNav then activeNav.BackgroundColor3=Color3.fromRGB(0,0,0);activeNav.BackgroundTransparency=1;activeNav.TextColor3=C.textDim end;activeNav=btn;btn.BackgroundColor3=C.activeDim;btn.BackgroundTransparency=0;btn.TextColor3=C.accentBrt end
@@ -787,9 +1104,7 @@ end
 local function renderFun()
     clearContent();local lo=1;local s=Features.spooferSettings
     secHead("🎭 Spoofer",lo);lo+=1
-    
     createToggle({title="Enable Spoofer",desc="Impersonate another player",layoutOrder=lo,default=Features.spooferEnabled,onChange=function(on)Features.setSpoofer(on)end});lo+=1
-    
     local victimRow=mkRow("Victim UserID",lo,52);lo+=1
     mkLabel({Parent=victimRow,Text="Victim UserID",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
     mkLabel({Parent=victimRow,Text="0 = spoof as yourself",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
@@ -800,7 +1115,6 @@ local function renderFun()
     victimInput.Font=FONT;victimInput.TextSize=12;victimInput.BorderSizePixel=0
     mkCorner(victimInput,CR_SM);mkStroke(victimInput,C.accent,0,1)
     victimInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(victimInput.Text) if num then s.victim=math.floor(num);Features.reloadSpoofer() end end end)
-    
     local streakRow=mkRow("Win Streak",lo,52);lo+=1
     mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
     mkLabel({Parent=streakRow,Text="Fake win streak number",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
@@ -811,39 +1125,17 @@ local function renderFun()
     streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
     mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
     streakInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(streakInput.Text) if num then s.streak=math.floor(num);Features.reloadSpoofer() end end end)
-    
     createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.verified,onChange=function(on)s.verified=on;Features.reloadSpoofer()end});lo+=1
-    
     mkSep(mainScroll,lo);lo+=1
     secHead("📱 Device Spoofer",lo);lo+=1
-    
     local devices={{"Mouse & Keyboard","MouseKeyboard"},{"Gamepad","Gamepad"},{"Mobile (Touch)","Touch"},{"VR","VR"}}
     for _,device in ipairs(devices)do
-        createToggle({
-            title=device[1],
-            desc="Auto-spoof as "..device[1].." on respawn",
-            layoutOrder=lo,
-            default=autoSpoofDevice==device[2],
-            onChange=function(on)
-                if on then autoSpoofDevice=device[2];spoofDevice(device[2]);showToast("Auto-spoof: "..device[1])
-                else autoSpoofDevice=nil;showToast("Auto-spoof OFF")end
-            end
-        })
+        createToggle({title=device[1],desc="Auto-spoof as "..device[1].." on respawn",layoutOrder=lo,default=autoSpoofDevice==device[2],onChange=function(on)if on then autoSpoofDevice=device[2];spoofDevice(device[2]);showToast("Auto-spoof: "..device[1])else autoSpoofDevice=nil;showToast("Auto-spoof OFF")end end})
         lo+=1
     end
-    
     mkSep(mainScroll,lo);lo+=1
     secHead("📐 Stretch Resolution",lo);lo+=1
-    
-    createToggle({
-        title="Enable Stretch Res",
-        desc="Makes enemies wider (easier to hit)",
-        layoutOrder=lo,
-        default=Features.stretchResEnabled,
-        onChange=function(on)Features.setStretchRes(on)end
-    })
-    lo+=1
-    
+    createToggle({title="Enable Stretch Res",desc="Makes enemies wider (easier to hit)",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
     local stretchRow=mkRow("Stretch Value",lo,52);lo+=1
     mkLabel({Parent=stretchRow,Text="Stretch Amount",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
     mkLabel({Parent=stretchRow,Text="1.0 = normal | 0.0 = max stretch",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
@@ -1048,5 +1340,4 @@ UIS.InputEnded:Connect(function(input)
     end
 end)
 
-print("Bosco Hub V1 loaded!")
 showToast("Bosco Hub V1 loaded!")
