@@ -1639,3 +1639,167 @@ mkNavHdr("🛡 PROTECTION",17)
 mkNav("OOB Bypass",18,renderOOBBypass)
 mkNav("Staff Detector",19,renderStaffDetector)
 mkSep(sbScroll,20)
+
+-- ═══════════════════════════════════════════════════════
+--  PART 2e - REMAINING UI PAGES
+-- ═══════════════════════════════════════════════════════
+
+-- ESP Page
+local function renderESP()
+    clearContent();local lo=1;local s=Features.espSettings
+    secHead("👁 ESP",lo);lo+=1
+    createToggle({title="Enable ESP",desc="See enemies through walls",layoutOrder=lo,default=Features.espEnabled,onChange=function(on)Features.setESP(on)end});lo+=1
+    createToggle({title="Box ESP",desc="Draw boxes around enemies",layoutOrder=lo,default=s.Box,onChange=function(on)s.Box=on;Features.setESPSetting("Box",on)end});lo+=1
+    createToggle({title="Filled Box",desc="Fill the ESP boxes",layoutOrder=lo,default=s.BoxFilled,onChange=function(on)s.BoxFilled=on;Features.setESPSetting("BoxFilled",on)end});lo+=1
+    createToggle({title="Name ESP",desc="Show enemy names",layoutOrder=lo,default=s.Name,onChange=function(on)s.Name=on;Features.setESPSetting("Name",on)end});lo+=1
+    createToggle({title="Distance ESP",desc="Show distance to enemies",layoutOrder=lo,default=s.Distance,onChange=function(on)s.Distance=on;Features.setESPSetting("Distance",on)end});lo+=1
+    createToggle({title="Team Check",desc="Only show enemies",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on;Features.setESPSetting("TeamCheck",on)end});lo+=1
+end
+
+-- Bullet Trails Page
+local function renderBulletTrails()
+    clearContent();local lo=1
+    secHead("🔫 Bullet Trails",lo);lo+=1
+    createToggle({title="Enable Bullet Trails",desc="Show bullet trajectory lines",layoutOrder=lo,default=Features.bulletTrailsEnabled,onChange=function(on)Features.bulletTrailsEnabled=on end});lo+=1
+end
+
+-- Crosshair Page
+local function renderCrosshair()
+    clearContent();local lo=1;local s=Features.crosshairSettings
+    secHead("➕ Crosshair",lo);lo+=1
+    createToggle({title="Enable Crosshair",desc="Custom crosshair overlay",layoutOrder=lo,default=Features.crosshairEnabled,onChange=function(on)Features.crosshairEnabled=on end});lo+=1
+    createDualSlider({title="Length",desc="Line length",layoutOrder=lo,default=s.Length,min=5,max=50,onChange=function(v)s.Length=v end});lo+=1
+    createDualSlider({title="Thickness",desc="Line thickness",layoutOrder=lo,default=s.Thickness,min=1,max=10,onChange=function(v)s.Thickness=v end});lo+=1
+    createDualSlider({title="Offset",desc="Gap from center",layoutOrder=lo,default=s.Offset,min=0,max=30,onChange=function(v)s.Offset=v end});lo+=1
+    createDualSlider({title="Rotation",desc="Rotation angle",layoutOrder=lo,default=s.Rotation,min=0,max=360,onChange=function(v)s.Rotation=v end});lo+=1
+end
+
+-- Camera Page
+local function renderCamera()
+    clearContent();local lo=1;local s=Features.camera
+    secHead("📷 Camera",lo);lo+=1
+    createToggle({title="Anti Flashbang",desc="Block flashbang effects",layoutOrder=lo,default=s.AntiFlashbang,onChange=function(on)s.AntiFlashbang=on end});lo+=1
+    createToggle({title="Anti Smoke",desc="Remove smoke effects",layoutOrder=lo,default=s.AntiSmoke,onChange=function(on)s.AntiSmoke=on end});lo+=1
+    createDualSlider({title="Camera FOV",desc="Field of view (70 = default)",layoutOrder=lo,default=s.FOV,min=30,max=150,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Resolution",desc="1.0 = normal | 0.5 = stretched",layoutOrder=lo,default=s.Resolution,min=0.1,max=2,onChange=function(v)s.Resolution=v end});lo+=1
+end
+
+-- Lighting Page
+local function renderLighting()
+    clearContent();local lo=1;local s=Features.lighting
+    secHead("💡 Lighting",lo);lo+=1
+    createToggle({title="Override Lighting",desc="Custom lighting settings",layoutOrder=lo,default=s.Enabled,onChange=function(on)s.Enabled=on end});lo+=1
+    createDualSlider({title="Brightness",desc="Map brightness",layoutOrder=lo,default=s.Brightness,min=0,max=10,onChange=function(v)s.Brightness=v end});lo+=1
+    createDualSlider({title="Exposure",desc="Exposure compensation",layoutOrder=lo,default=s.Exposure,min=-5,max=5,onChange=function(v)s.Exposure=v end});lo+=1
+end
+
+-- Stretch Res Page
+local function renderStretchRes()
+    clearContent();local lo=1
+    secHead("📐 Stretch Res",lo);lo+=1
+    createToggle({title="Enable Stretch Res",desc="Makes enemies wider",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
+    local stretchRow=mkRow("Stretch Value",lo,52);lo+=1
+    mkLabel({Parent=stretchRow,Text="Stretch Amount",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    mkLabel({Parent=stretchRow,Text="1.0 = normal | 0.0 = max",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
+    local stretchInput=Instance.new("TextBox",stretchRow)
+    stretchInput.Size=UDim2.fromOffset(70,26);stretchInput.Position=UDim2.new(1,-70,0.5,-13)
+    stretchInput.Text=tostring(Features.stretchResValue);stretchInput.TextColor3=C.text
+    stretchInput.BackgroundColor3=C.activeDim;stretchInput.Font=FONT;stretchInput.TextSize=12;stretchInput.BorderSizePixel=0
+    mkCorner(stretchInput,CR_SM);mkStroke(stretchInput,C.accent,0,1)
+    stretchInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(stretchInput.Text)if num and num>=0 and num<=1 then Features.stretchResValue=num end end end)
+end
+
+-- Unlock All Page
+local function renderUnlockAll()
+    clearContent();local lo=1
+    secHead("🎨 Unlock All",lo);lo+=1
+    createActionRow({title="Unlock All Cosmetics",desc="Press to unlock all skins/wraps/charms/finishers",layoutOrder=lo,buttonText="🔓 UNLOCK ALL",onClick=function()Features.setUnlockAll(true);showToast("Unlocking everything...")end});lo+=1
+    createActionRow({title="Unlock All Weapons",desc="Press to unlock all weapons",layoutOrder=lo,buttonText="🔫 UNLOCK WEAPONS",onClick=function()Features.setUnlockWeapons(true);showToast("Unlocking weapons...")end});lo+=1
+end
+
+-- Spoofer Page
+local function renderSpoofer()
+    clearContent();local lo=1;local s=Features.spooferSettings
+    secHead("🎭 Spoofer",lo);lo+=1
+    
+    -- Name Spoofing
+    secHead("📝 Name Spoofer",lo);lo+=1
+    local nameRow=mkRow("Display Name",lo,52);lo+=1
+    mkLabel({Parent=nameRow,Text="Display Name",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local nameInput=Instance.new("TextBox",nameRow)
+    nameInput.Size=UDim2.fromOffset(120,26);nameInput.Position=UDim2.new(1,-120,0.5,-13)
+    nameInput.Text=tostring(s.DisplayName or LP.DisplayName);nameInput.PlaceholderText="Display Name"
+    nameInput.TextColor3=C.text;nameInput.BackgroundColor3=C.activeDim
+    nameInput.Font=FONT;nameInput.TextSize=12;nameInput.BorderSizePixel=0
+    mkCorner(nameInput,CR_SM);mkStroke(nameInput,C.accent,0,1)
+    nameInput.FocusLost:Connect(function(ep)if ep then s.DisplayName=nameInput.Text end end)
+    
+    local userRow=mkRow("Username",lo,52);lo+=1
+    mkLabel({Parent=userRow,Text="Username",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local userInput=Instance.new("TextBox",userRow)
+    userInput.Size=UDim2.fromOffset(120,26);userInput.Position=UDim2.new(1,-120,0.5,-13)
+    userInput.Text=tostring(s.Username or LP.Name);userInput.PlaceholderText="Username"
+    userInput.TextColor3=C.text;userInput.BackgroundColor3=C.activeDim
+    userInput.Font=FONT;userInput.TextSize=12;userInput.BorderSizePixel=0
+    mkCorner(userInput,CR_SM);mkStroke(userInput,C.accent,0,1)
+    userInput.FocusLost:Connect(function(ep)if ep then s.Username=userInput.Text end end)
+    
+    -- Badges
+    secHead("🏅 Badges",lo);lo+=1
+    createToggle({title="Premium",desc="Show premium badge",layoutOrder=lo,default=s.Premium or false,onChange=function(on)s.Premium=on end});lo+=1
+    createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.Verified or false,onChange=function(on)s.Verified=on end});lo+=1
+    
+    -- Leaderboard
+    secHead("📊 Leaderboard",lo);lo+=1
+    local eloRow=mkRow("ELO",lo,52);lo+=1
+    mkLabel({Parent=eloRow,Text="Spoofed ELO",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local eloInput=Instance.new("TextBox",eloRow)
+    eloInput.Size=UDim2.fromOffset(80,26);eloInput.Position=UDim2.new(1,-80,0.5,-13)
+    eloInput.Text=tostring(s.ELO or 0);eloInput.PlaceholderText="ELO"
+    eloInput.TextColor3=C.text;eloInput.BackgroundColor3=C.activeDim
+    eloInput.Font=FONT;eloInput.TextSize=12;eloInput.BorderSizePixel=0
+    mkCorner(eloInput,CR_SM);mkStroke(eloInput,C.accent,0,1)
+    eloInput.FocusLost:Connect(function(ep)if ep then local n=tonumber(eloInput.Text)if n then s.ELO=n end end end)
+    
+    local streakRow=mkRow("Win Streak",lo,52);lo+=1
+    mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local streakInput=Instance.new("TextBox",streakRow)
+    streakInput.Size=UDim2.fromOffset(80,26);streakInput.Position=UDim2.new(1,-80,0.5,-13)
+    streakInput.Text=tostring(s.Streak or 0);streakInput.PlaceholderText="Streak"
+    streakInput.TextColor3=C.text;streakInput.BackgroundColor3=C.activeDim
+    streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
+    mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
+    streakInput.FocusLost:Connect(function(ep)if ep then local n=tonumber(streakInput.Text)if n then s.Streak=n end end end)
+    
+    local levelRow=mkRow("Level",lo,52);lo+=1
+    mkLabel({Parent=levelRow,Text="Level",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local levelInput=Instance.new("TextBox",levelRow)
+    levelInput.Size=UDim2.fromOffset(80,26);levelInput.Position=UDim2.new(1,-80,0.5,-13)
+    levelInput.Text=tostring(s.Level or 1);levelInput.PlaceholderText="Level"
+    levelInput.TextColor3=C.text;levelInput.BackgroundColor3=C.activeDim
+    levelInput.Font=FONT;levelInput.TextSize=12;levelInput.BorderSizePixel=0
+    mkCorner(levelInput,CR_SM);mkStroke(levelInput,C.accent,0,1)
+    levelInput.FocusLost:Connect(function(ep)if ep then local n=tonumber(levelInput.Text)if n then s.Level=n end end end)
+    
+    -- Device Spoofer
+    secHead("📱 Device Spoofer",lo);lo+=1
+    local devices={{"Mouse & Keyboard","MouseKeyboard"},{"Gamepad","Gamepad"},{"Mobile (Touch)","Touch"},{"VR","VR"}}
+    for _,device in ipairs(devices)do
+        createToggle({title=device[1],desc="Spoof as "..device[1],layoutOrder=lo,default=s.Device==device[2],onChange=function(on)if on then s.Device=device[2];spoofDevice(device[2])end end});lo+=1
+    end
+end
+
+-- Staff Detector Page
+local function renderStaffDetector()
+    clearContent();local lo=1
+    secHead("🛡 Staff Detector",lo);lo+=1
+    createToggle({title="Enable Staff Detector",desc="Warns when Rivals moderators join",layoutOrder=lo,default=Features.staffDetectorEnabled,onChange=function(on)Features.setStaffDetector(on);if on then showToast("Staff Detector active!")end end});lo+=1
+    createToggle({title="Auto Leave",desc="Instantly leave if mod detected",layoutOrder=lo,default=false,onChange=function(on)autoleave=on end});lo+=1
+end
+
+-- OOB Bypass Page
+local function renderOOBBypass()
+    clearContent();local lo=1
+    secHead("🌐 OOB Bypass",lo);lo+=1
+    createToggle({title="Enable OOB Bypass",desc="Prevents out-of-bounds death",layoutOrder=lo,default=Features.oobBypassEnabled,onChange=function(on)Features.oobBypassEnabled=on end});lo+=1
+end
