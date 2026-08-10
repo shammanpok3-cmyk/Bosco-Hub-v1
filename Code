@@ -1468,3 +1468,174 @@ local function createKeybindRow(props)
     return row
 end
 
+-- ═══════════════════════════════════════════════════════
+--  PART 2c - COMBAT PAGES
+-- ═══════════════════════════════════════════════════════
+
+-- AIMBOT PAGE
+local function renderAimbot()
+    clearContent();local lo=1;local s=Features.aimbotSettings
+    secHead("🎯 Aimbot",lo);lo+=1
+    createToggle({title="Enable Aimbot",desc="Toggle aimbot on/off",layoutOrder=lo,default=Features.aimbotEnabled,onChange=function(on)Features.setAimbot(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Aimbot field of view",layoutOrder=lo,default=s.FOV,min=30,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Aim Speed",desc="1=slow 50=fast",layoutOrder=lo,default=s.AimSpeed,min=1,max=50,onChange=function(v)s.AimSpeed=v end});lo+=1
+    createCycleButton({title="Target Part",desc="Body part to aim at",layoutOrder=lo,default=s.TargetPart,options={"Head","HumanoidRootPart","UpperTorso","LowerTorso"},onChange=function(v)s.TargetPart=v end});lo+=1
+    createCycleButton({title="Priority",desc="Target selection",layoutOrder=lo,default=s.TargetPriority,options={"FOV","Distance","Health"},onChange=function(v)s.TargetPriority=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only visible enemies",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Ignore teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Prediction",desc="Predict movement",layoutOrder=lo,default=s.Prediction,onChange=function(on)s.Prediction=on end});lo+=1
+    createToggle({title="Sticky Aim",desc="Stay locked on target",layoutOrder=lo,default=s.StickyAim,onChange=function(on)s.StickyAim=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+    createToggle({title="Require Right Click",desc="Only aim when ADSing",layoutOrder=lo,default=s.RequireRightClick,onChange=function(on)s.RequireRightClick=on end});lo+=1
+    createToggle({title="ADS Enabled",desc="Adjust speed when ADSing",layoutOrder=lo,default=s.ADSEnabled,onChange=function(on)s.ADSEnabled=on end});lo+=1
+    createDualSlider({title="ADS Multiplier %",desc="10% = fastest | 100% = normal | 200% = slowest",layoutOrder=lo,default=s.ADSMultiplier or 80,min=10,max=200,onChange=function(v)s.ADSMultiplier=v end});lo+=1
+    createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=s.AutoFire,onChange=function(on)s.AutoFire=on end});lo+=1
+    createToggle({title="Post-Shot Inertia",desc="Natural drift after shooting",layoutOrder=lo,default=s.PostKillInertia or false,onChange=function(on)s.PostKillInertia=on end});lo+=1
+end
+
+-- SILENT AIM PAGE
+local function renderSilentAim()
+    clearContent();local lo=1;local s=Features.silentAimSettings
+    secHead("🔇 Silent Aim",lo);lo+=1
+    createToggle({title="Enable Silent Aim",desc="Hit targets without aiming",layoutOrder=lo,default=Features.silentAimEnabled,onChange=function(on)Features.setSilentAim(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Silent aim FOV",layoutOrder=lo,default=s.FOV,min=50,max=1000,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Max targeting range",layoutOrder=lo,default=s.MaxDistance,min=50,max=2000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createCycleButton({title="Hit Part",desc="Body part to hit",layoutOrder=lo,default=s.HitPart,options={"Head","HumanoidRootPart","UpperTorso"},onChange=function(v)s.HitPart=v end});lo+=1
+    createDualSlider({title="Hit Chance %",desc="Chance to hit target",layoutOrder=lo,default=s.HitChance or 100,min=0,max=100,onChange=function(v)s.HitChance=v end});lo+=1
+    createToggle({title="Team Check",desc="Don't hit teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+    createToggle({title="Manipulation",desc="Desync for better aim",layoutOrder=lo,default=s.Manipulation or false,onChange=function(on)s.Manipulation=on end});lo+=1
+end
+
+-- FLICK PAGE
+local function renderFlick()
+    clearContent();local lo=1;local s=Features.flickSettings
+    secHead("💨 Flick",lo);lo+=1
+    createToggle({title="Enable Flick",desc="Flick to head and shoot",layoutOrder=lo,default=Features.flickEnabled,onChange=function(on)Features.setFlick(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only flick to visible",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Don't flick teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+end
+
+-- TRIGGERBOT PAGE
+local function renderTriggerbot()
+    clearContent();local lo=1;local s=Features.triggerbotSettings
+    secHead("🤖 Triggerbot",lo);lo+=1
+    createToggle({title="Enable Triggerbot",desc="Auto-shoot on crosshair",layoutOrder=lo,default=Features.triggerbotEnabled,onChange=function(on)Features.setTriggerbot(on)end});lo+=1
+    createDualSlider({title="Shoot Delay (ms)",desc="Delay before shooting",layoutOrder=lo,default=s.ShootDelay or 100,min=0,max=300,onChange=function(v)s.ShootDelay=v end});lo+=1
+    createToggle({title="Check Scoped - Sniper",desc="Only shoot when scoped",layoutOrder=lo,default=false,onChange=function(on)if on then s.CheckScoped={"Sniper","Crossbow"}else s.CheckScoped={}end end});lo+=1
+end
+
+-- WEAPON MODS PAGE
+local function renderWeaponMods()
+    clearContent();local lo=1;local s=Features.weaponMods
+    secHead("🔫 Weapon Mods",lo);lo+=1
+    createToggle({title="No Recoil",desc="Remove all recoil",layoutOrder=lo,default=s.NoRecoil,onChange=function(on)s.NoRecoil=on end});lo+=1
+    createToggle({title="No Spread",desc="Perfect accuracy",layoutOrder=lo,default=s.NoSpread,onChange=function(on)s.NoSpread=on end});lo+=1
+    createToggle({title="Full Auto",desc="All weapons full auto",layoutOrder=lo,default=s.FullAuto,onChange=function(on)s.FullAuto=on end});lo+=1
+    createDualSlider({title="Firerate %",desc="100=normal 200=2x faster",layoutOrder=lo,default=s.Firerate or 100,min=50,max=300,onChange=function(v)s.Firerate=v end});lo+=1
+end
+
+-- Add to navigation
+mkNavHdr("🎯 COMBAT",1)
+mkNav("Aimbot",2,renderAimbot)
+mkNav("Silent Aim",3,renderSilentAim)
+mkNav("Flick",4,renderFlick)
+mkNav("Triggerbot",5,renderTriggerbot)
+mkNav("Weapon Mods",6,renderWeaponMods)
+
+-- ═══════════════════════════════════════════════════════
+--  MOVEMENT PAGES
+-- ═══════════════════════════════════════════════════════
+
+local function renderInfiniteJump()
+    clearContent();local lo=1
+    secHead("🏃 Infinite Jump",lo);lo+=1
+    createToggle({title="Enable Infinite Jump",desc="Hold space to fly (old method)",layoutOrder=lo,default=Features.infiniteJumpEnabled,onChange=function(on)Features.setInfiniteJump(on)end});lo+=1
+end
+
+local function renderFly()
+    clearContent();local lo=1;local s=Features.movement
+    secHead("🕊 Fly",lo);lo+=1
+    createToggle({title="Enable Fly",desc="WASD + Space/Shift to fly",layoutOrder=lo,default=s.Fly,onChange=function(on)s.Fly=on end});lo+=1
+    createDualSlider({title="Fly Speed",desc="Movement speed while flying",layoutOrder=lo,default=s.FlySpeed or 50,min=10,max=200,onChange=function(v)s.FlySpeed=v end});lo+=1
+end
+
+local function renderVelocity()
+    clearContent();local lo=1;local s=Features.movement
+    secHead("💨 Velocity",lo);lo+=1
+    createToggle({title="Enable Velocity",desc="Fast horizontal movement",layoutOrder=lo,default=s.Velocity,onChange=function(on)s.Velocity=on end});lo+=1
+    createDualSlider({title="Speed",desc="Movement speed multiplier",layoutOrder=lo,default=s.VelocitySpeed or 50,min=10,max=300,onChange=function(v)s.VelocitySpeed=v end});lo+=1
+end
+
+local function renderSlideBoost()
+    clearContent();local lo=1;local s=Features.movement
+    secHead("🛼 Slide Boost",lo);lo+=1
+    createToggle({title="Enable Slide Boost",desc="Boost slide speed",layoutOrder=lo,default=s.SlideBoost,onChange=function(on)s.SlideBoost=on end});lo+=1
+    createDualSlider({title="Boost Multiplier",desc="Slide speed multiplier",layoutOrder=lo,default=s.SlideBoostValue or 1,min=1,max=10,onChange=function(v)s.SlideBoostValue=v end});lo+=1
+end
+
+local function renderInfDoubleJump()
+    clearContent();local lo=1;local s=Features.movement
+    secHead("🦘 Infinite Double Jump",lo);lo+=1
+    createToggle({title="Enable Inf Double Jump",desc="Jump infinitely in the air",layoutOrder=lo,default=s.InfiniteDoubleJump,onChange=function(on)s.InfiniteDoubleJump=on end});lo+=1
+end
+
+local function renderPluggWalk()
+    clearContent();local lo=1
+    secHead("👻 PluggWalk",lo);lo+=1
+    createToggle({title="Enable PluggWalk",desc="Server CF desync movement (hard to hit)",layoutOrder=lo,default=Features.pluggwalkEnabled,onChange=function(on)Features.setPluggWalk(on)end});lo+=1
+end
+
+-- ═══════════════════════════════════════════════════════
+--  OOB BYPASS PAGE
+-- ═══════════════════════════════════════════════════════
+local function renderOOBBypass()
+    clearContent();local lo=1
+    secHead("🗺 OOB Bypass",lo);lo+=1
+    createToggle({title="Enable OOB Bypass",desc="Prevents out-of-bounds kills",layoutOrder=lo,default=Features.oobBypassEnabled,onChange=function(on)Features.oobBypassEnabled=on end});lo+=1
+end
+
+-- ═══════════════════════════════════════════════════════
+--  VIEWMODEL PAGE
+-- ═══════════════════════════════════════════════════════
+local function renderViewmodel()
+    clearContent();local lo=1;local s=Features.viewmodel
+    secHead("🔧 Viewmodel",lo);lo+=1
+    
+    createToggle({title="Override FPS",desc="Change viewmodel animation FPS",layoutOrder=lo,default=s.OverrideFPS,onChange=function(on)s.OverrideFPS=on end});lo+=1
+    createDualSlider({title="FPS Multiplier",desc="Viewmodel animation speed",layoutOrder=lo,default=s.FPSMulti or 60,min=1,max=240,onChange=function(v)s.FPSMulti=v end});lo+=1
+    
+    createToggle({title="Viewmodel Offset",desc="Change viewmodel position",layoutOrder=lo,default=s.Offset,onChange=function(on)s.Offset=on end});lo+=1
+    createDualSlider({title="X Offset",desc="Left/Right",layoutOrder=lo,default=s.XOffset or 0,min=-10,max=10,onChange=function(v)s.XOffset=v end});lo+=1
+    createDualSlider({title="Y Offset",desc="Up/Down",layoutOrder=lo,default=s.YOffset or 0,min=-10,max=10,onChange=function(v)s.YOffset=v end});lo+=1
+    createDualSlider({title="Z Offset",desc="Forward/Back",layoutOrder=lo,default=s.ZOffset or 0,min=-10,max=10,onChange=function(v)s.ZOffset=v end});lo+=1
+    
+    local anims = {"sway","tilt","bobbing","idle animation","jump animation","slide animation","equip animation","shoot animation","aiming animation","sprint animation","muzzle flash"}
+    mkSep(mainScroll,lo);lo+=1
+    for _, anim in ipairs(anims) do
+        createToggle({title="Disable "..anim,desc="Remove "..anim.." from viewmodel",layoutOrder=lo,default=s.DisableAnimations[anim] or false,onChange=function(on)s.DisableAnimations[anim]=on end});lo+=1
+    end
+end
+
+-- ═══════════════════════════════════════════════════════
+--  NAVIGATION (Movement + Protection)
+-- ═══════════════════════════════════════════════════════
+mkSep(sbScroll,5)
+mkNavHdr("🏃 MOVEMENT",6)
+mkNav("Fly",7,renderFly)
+mkNav("Velocity",8,renderVelocity)
+mkNav("Slide Boost",9,renderSlideBoost)
+mkNav("Inf Double Jump",10,renderInfDoubleJump)
+mkNav("Infinite Jump",11,renderInfiniteJump)
+mkNav("PluggWalk",12,renderPluggWalk)
+mkSep(sbScroll,13)
+mkNavHdr("🔧 VIEWMODEL",14)
+mkNav("Viewmodel",15,renderViewmodel)
+mkSep(sbScroll,16)
+mkNavHdr("🛡 PROTECTION",17)
+mkNav("OOB Bypass",18,renderOOBBypass)
+mkNav("Staff Detector",19,renderStaffDetector)
+mkSep(sbScroll,20)
