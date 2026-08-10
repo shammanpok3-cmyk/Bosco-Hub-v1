@@ -4,6 +4,10 @@
     RightShift / RightCtrl → open/close menu
 ]]
 
+-- ═══════════════════════════════════════════════════════
+-- PART 1a - CORE SERVICES & ANTI-CHEAT
+-- ═══════════════════════════════════════════════════════
+
 -- Services
 local Services = setmetatable({}, {__index = function(_, k) return game:GetService(k) end})
 local Players = Services.Players
@@ -57,7 +61,7 @@ local function isTargetVisible(origin, targetPos, targetPlayerObj)
     return false
 end
 
--- Team Check (Auto TeamID)
+-- Team Check
 local function isTeammate(player)
     if not player then return false end
     return player:GetAttribute("TeamID") == LP:GetAttribute("TeamID")
@@ -66,7 +70,7 @@ end
 -- Drawing check
 local hasDrawing = pcall(function() return Drawing.new("Circle") end)
 
--- Namecall Dispatcher (from Aetherea)
+-- Namecall Dispatcher
 local NamecallDispatcher = {Hooks = {}, Original = nil}
 
 function NamecallDispatcher:Register(callback)
@@ -94,24 +98,41 @@ NamecallDispatcher.Original = hookmetamethod(game, "__namecall", newcclosure(fun
     return NamecallDispatcher.Original(object, ...)
 end))
 
--- Anti-Cheat Bypass (Safe)
+-- Improved Anti-Cheat Bypass
+local detectedNames = {
+    "ClientAlert", "LocalScript3", "AntiCheat", "AntiExploit",
+    "Detector", "BanScript", "KickScript", "AC_", "Guard", "Watchdog"
+}
+
 local function DeepCleanup()
     for _, v in ipairs(workspace:GetDescendants()) do
-        if v.Name == "ClientAlert" or v.Name == "LocalScript3" then SafeDestroy(v) end
+        for _, name in ipairs(detectedNames) do
+            if v.Name:lower():find(name:lower()) then SafeDestroy(v); break end
+        end
     end
     for _, v in ipairs(LP.PlayerGui:GetDescendants()) do
-        if v.Name == "ClientAlert" or v.Name == "LocalScript3" then SafeDestroy(v) end
+        for _, name in ipairs(detectedNames) do
+            if v.Name:lower():find(name:lower()) then SafeDestroy(v); break end
+        end
     end
-    for _, v in ipairs((LP:FindFirstChild("PlayerScripts") and LP.PlayerScripts:GetDescendants() or {})) do
-        if v.Name == "ClientAlert" or v.Name == "LocalScript3" then SafeDestroy(v) end
+    local playerScripts = LP:FindFirstChild("PlayerScripts")
+    if playerScripts then
+        for _, v in ipairs(playerScripts:GetDescendants()) do
+            for _, name in ipairs(detectedNames) do
+                if v.Name:lower():find(name:lower()) then SafeDestroy(v); break end
+            end
+        end
     end
 end
 
 NamecallDispatcher:Register(function(self, method, ...)
     if method == "Kick" or method == "kick" then return true end
     if method == "FireServer" then
-        local RemoteName = tostring(self.Name):lower()
-        if RemoteName:find("kick") or RemoteName:find("alert") or RemoteName:find("ban") then return true end
+        local remoteName = tostring(self.Name):lower()
+        local blockedPatterns = {"kick", "alert", "ban", "report", "flag", "detect", "ac_", "anticheat"}
+        for _, pattern in ipairs(blockedPatterns) do
+            if remoteName:find(pattern) then return true end
+        end
     end
     return false
 end)
@@ -125,13 +146,13 @@ mt.__index = newcclosure(function(self, key)
 end)
 setreadonly(mt, true)
 
-task.spawn(function() while task.wait(1.5) do DeepCleanup() end end)
+task.spawn(function() while task.wait(2) do DeepCleanup() end end)
 DeepCleanup()
 
 -- Features
 local Features = {}
 
--- Module Loading (from Aetherea)
+-- Module Loading
 local modules = {}
 task.spawn(function()
     pcall(function()
@@ -168,27 +189,20 @@ task.spawn(function()
     end)
 end)
 
--- Wait for modules
 repeat task.wait(0.5) until modules.Gun and modules.FighterController
-
 print("Bosco Hub V2 Core Loaded")
+
 -- ═══════════════════════════════════════════════════════
---  PART 1b - COMBAT FEATURES
+-- PART 1b - COMBAT FEATURES
 -- ═══════════════════════════════════════════════════════
 
 -- Server CF State
 local server_cf_sync = true
 local server_cf = nil
 
-local function ServerCFDesync()
-    server_cf_sync = false
-end
+local function ServerCFDesync() server_cf_sync = false end
+local function ServerCFSync() server_cf_sync = true end
 
-local function ServerCFSync()
-    server_cf_sync = true
-end
-
--- Server CF PostSimulation hook
 pcall(function()
     local real, real_lin_vel, real_ang_vel
     RunService:BindToRenderStep("BH_ServerCF", 0, function()
@@ -210,7 +224,7 @@ pcall(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  AIMBOT (Bosco Hub)
+-- AIMBOT
 -- ═══════════════════════════════════════════════════════
 Features.aimbotEnabled = false
 Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80, PostKillInertia=true }
@@ -224,7 +238,7 @@ local function getAdaptiveSpeed(baseSpeed)
     return baseSpeed * multiplier * 5
 end
 
-local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
+local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle = nil, nil, 0, nil, nil, nil
 
 local function updateFOVCircle()
     if not hasDrawing or not Features.aimbotSettings.ShowFOV then 
@@ -272,7 +286,6 @@ local function getBestTarget()
     local mp = UIS:GetMouseLocation(); local fovCenter = Vector2.new(mp.X, mp.Y)
     local s = Features.aimbotSettings; local now = tick()
     
-    -- Sticky aim
     if s.StickyAim and lockedTarget and isValidTarget(lockedTarget) and now - lockTime < s.StickyTime then
         local tPlayer = Players:GetPlayerFromCharacter(lockedTarget.Parent)
         if not (s.TeamCheck and isTeammate(tPlayer)) then
@@ -289,7 +302,6 @@ local function getBestTarget()
         lockedTarget = nil; targetPlayer = nil
     end
     
-    -- Find new target
     local bestPart, bestDist = nil, s.FOV
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LP then continue end
@@ -353,7 +365,7 @@ local function stopAimbotLoop() if aimbotConnection then aimbotConnection:Discon
 function Features.setAimbot(on) Features.aimbotEnabled = on; if on then startAimbotLoop() else stopAimbotLoop() end end
 
 -- ═══════════════════════════════════════════════════════
---  SILENT AIM (Aetherea Gun Hook)
+-- SILENT AIM
 -- ═══════════════════════════════════════════════════════
 Features.silentAimEnabled = false
 Features.silentAimSettings = { FOV=300, MaxDistance=500, HitPart="Head", HitChance=100, TeamCheck=true, ShowFOV=true, Manipulation=false }
@@ -413,7 +425,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  FLICK (Instant Snap)
+-- FLICK
 -- ═══════════════════════════════════════════════════════
 Features.flickEnabled = false
 Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true }
@@ -430,7 +442,7 @@ local function updateFlickFOV()
     flickFovCircle.Color = Color3.fromRGB(255, 200, 50)
 end
 
-function Features.setFlick(on) Features.flickEnabled = on; if on then setupSilentAim() end end
+function Features.setFlick(on) Features.flickEnabled = on end
 
 local function doFlick()
     if isFlicking then return end; isFlicking = true
@@ -471,7 +483,7 @@ end
 RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
 
 -- ═══════════════════════════════════════════════════════
---  TRIGGERBOT (Aetherea)
+-- TRIGGERBOT
 -- ═══════════════════════════════════════════════════════
 Features.triggerbotEnabled = false
 Features.triggerbotSettings = { ShootDelay=100, CheckScoped={} }
@@ -487,7 +499,6 @@ RunService.Heartbeat:Connect(function()
     local fighter = modules.FighterController:GetFighter(LP)
     if not fighter or not fighter.EquippedItem then return end
     
-    -- Scope check
     for _, scope in ipairs(Features.triggerbotSettings.CheckScoped) do
         if fighter.EquippedItem.Name == scope and not fighter.EquippedItem:IsFullyAiming() then
             if triggerbotActive then triggerbotActive = false; modules.MechanicsController:EquippedItemInput("FinishShooting") end
@@ -495,7 +506,6 @@ RunService.Heartbeat:Connect(function()
         end
     end
     
-    -- Find target in crosshair
     local cam = Camera; if not cam then return end
     local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
     local found = false
@@ -524,7 +534,7 @@ end)
 function Features.setTriggerbot(on) Features.triggerbotEnabled = on end
 
 -- ═══════════════════════════════════════════════════════
---  WEAPON MODS (No Recoil/Spread/Full Auto/Firerate)
+-- WEAPON MODS
 -- ═══════════════════════════════════════════════════════
 Features.weaponMods = { NoRecoil=false, NoSpread=false, FullAuto=false, Firerate=100 }
 local weaponOriginals = {}
@@ -553,30 +563,11 @@ end)
 print("Part 1b Loaded - Combat Features")
 
 -- ═══════════════════════════════════════════════════════
---  PART 1c - MOVEMENT + OOB + VIEWMODEL
+-- PART 1c - MOVEMENT + OOB + VIEWMODEL
 -- ═══════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════
---  INFINITE JUMP (Bosco Hub)
--- ═══════════════════════════════════════════════════════
-Features.infiniteJumpEnabled = false
-local jumpHeld, lastJump = false, 0
-
-UIS.InputBegan:Connect(function(input) if input.KeyCode == Enum.KeyCode.Space then jumpHeld = true end end)
-UIS.InputEnded:Connect(function(input) if input.KeyCode == Enum.KeyCode.Space then jumpHeld = false end end)
-
-RunService.RenderStepped:Connect(function()
-    if not Features.infiniteJumpEnabled or not jumpHeld then return end
-    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.FloorMaterial ~= Enum.Material.Air then return end
-    if tick() - lastJump < 0.1 then return end
-    hum.JumpPower = 50; hum.Jump = true; hum:ChangeState(Enum.HumanoidStateType.Jumping)
-    lastJump = tick()
-end)
-function Features.setInfiniteJump(on) Features.infiniteJumpEnabled = on end
-
--- ═══════════════════════════════════════════════════════
---  MOVEMENT (Fly, Velocity, Slide Boost, Inf Double Jump)
+-- MOVEMENT (Fly, Velocity, Slide Boost, Inf Double Jump)
 -- ═══════════════════════════════════════════════════════
 Features.movement = { Fly=false, FlySpeed=50, Velocity=false, VelocitySpeed=50, SlideBoost=false, SlideBoostValue=1, InfiniteDoubleJump=false }
 local fly_bp, fly_bg
@@ -646,7 +637,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  PLUGGWALK (Server CF Desync Movement)
+-- PLUGGWALK (Server CF Desync Movement)
 -- ═══════════════════════════════════════════════════════
 Features.pluggwalkEnabled = false
 local pluggwalk_hb, pluggwalk_flip
@@ -693,7 +684,7 @@ function Features.setPluggWalk(on)
 end
 
 -- ═══════════════════════════════════════════════════════
---  OOB BYPASS (Out of Bounds)
+-- OOB BYPASS (Out of Bounds)
 -- ═══════════════════════════════════════════════════════
 Features.oobBypassEnabled = true
 
@@ -718,7 +709,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  VIEWMODEL CUSTOMIZATION
+-- VIEWMODEL CUSTOMIZATION
 -- ═══════════════════════════════════════════════════════
 Features.viewmodel = { OverrideFPS=false, FPSMulti=60, Offset=false, XOffset=0, YOffset=0, ZOffset=0, DisableAnimations={} }
 
@@ -758,11 +749,11 @@ end)
 print("Part 1c Loaded - Movement + OOB + Viewmodel")
 
 -- ═══════════════════════════════════════════════════════
---  PART 1d - ESP + VISUALS + CAMERA
+-- PART 1d - ESP + VISUALS + CAMERA
 -- ═══════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════
---  ESP (Bosco Hub)
+-- ESP (Bosco Hub)
 -- ═══════════════════════════════════════════════════════
 Features.espEnabled = false
 Features.espSettings = { Box=true, BoxFilled=false, Name=true, Distance=true, TeamCheck=true }
@@ -807,7 +798,7 @@ Players.PlayerRemoving:Connect(removeESP)
 LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
 
 -- ═══════════════════════════════════════════════════════
---  BULLET TRAILS (Aetherea)
+-- BULLET TRAILS (Aetherea)
 -- ═══════════════════════════════════════════════════════
 Features.bulletTrailsEnabled = false
 Features.bulletTrailsColor = Color3.fromRGB(181, 126, 220)
@@ -845,7 +836,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  CROSSHAIR (Aetherea Style)
+-- CROSSHAIR (Aetherea Style)
 -- ═══════════════════════════════════════════════════════
 Features.crosshairEnabled = false
 Features.crosshairSettings = { Length=20, Thickness=2, Offset=5, Rotation=0, Color=Color3.fromRGB(255,255,255), OutlineColor=Color3.fromRGB(0,0,0) }
@@ -879,7 +870,7 @@ if hasDrawing then
 end
 
 -- ═══════════════════════════════════════════════════════
---  CAMERA (Anti-Flashbang, Anti-Smoke, FOV, Resolution)
+-- CAMERA (Anti-Flashbang, Anti-Smoke, FOV, Resolution)
 -- ═══════════════════════════════════════════════════════
 Features.camera = { AntiFlashbang=false, AntiSmoke=false, FOV=70, Resolution=1 }
 
@@ -916,7 +907,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  LIGHTING / ATMOSPHERE
+-- LIGHTING / ATMOSPHERE
 -- ═══════════════════════════════════════════════════════
 Features.lighting = { Enabled=false, Brightness=2, Exposure=0, Ambient=Color3.fromRGB(255,255,255) }
 
@@ -928,7 +919,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
---  STRETCH RES
+-- STRETCH RES
 -- ═══════════════════════════════════════════════════════
 Features.stretchResEnabled = false
 Features.stretchResValue = 0.81
@@ -950,16 +941,60 @@ end
 print("Part 1d Loaded - ESP + Visuals + Camera")
 
 -- ═══════════════════════════════════════════════════════
---  PART 1e - UNLOCKER + SKIN CHANGER + SPOOFER
+-- PART 1e - UNLOCKER + SKIN CHANGER + SPOOFER
 -- ═══════════════════════════════════════════════════════
 
+-- Initialize missing features
+Features.skinChangerEnabled = false
+Features.spooferEnabled = false
+Features.spooferSettings = {
+    DisplayName = LP.DisplayName,
+    Username = LP.Name,
+    Premium = false,
+    Verified = false,
+    ELO = 0,
+    Streak = 0,
+    Level = 1,
+    Device = "MouseKeyboard"
+}
+
+function Features.setSkinChanger(on) 
+    Features.skinChangerEnabled = on 
+    if on and not unlockRan then
+        unlockRan = false
+        runUnlockAll()
+    end
+end
+
+function Features.setSpoofer(on)
+    Features.spooferEnabled = on
+    if on then
+        Features.spoofDevice()
+    end
+end
+
+function Features.setUnlockWeapons(on)
+    if on then
+        pcall(function()
+            local ownables = modules.ShopLibrary:GetReleasedOwnableWeapons()
+            local owned = {}
+            local inv = modules.PlayerDataController:Get("WeaponInventory")
+            if inv then for _, w in pairs(inv) do if w.Name then owned[w.Name] = true end end end
+            for _, wn in pairs(ownables) do
+                if not owned[wn] then 
+                    table.insert(skinchangerState.fake_weapon_owned, {Name = wn, Level = 1, XP = 0}) 
+                end
+            end
+        end)
+    end
+end
+
 -- ═══════════════════════════════════════════════════════
---  UNLOCK ALL + SKIN CHANGER (Aetherea Unified)
+-- UNLOCK ALL + SKIN CHANGER (Aetherea Unified)
 -- ═══════════════════════════════════════════════════════
 Features.unlockAllEnabled = false
 local unlockRan = false
 local skinchangerState = { equipped = {}, favorites = {}, fake_owned = {}, fake_weapon_owned = {}, constructing_weapon = nil, viewing_profile = nil, last_used_weapon = nil }
-local objectid_to_weapon = {}
 
 local function cloneCosmetic(name, cosmetic_type, options)
     if not modules.CosmeticLibrary or not modules.CosmeticLibrary.Cosmetics then return nil end
@@ -1100,23 +1135,14 @@ end
 function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then unlockRan = false; runUnlockAll() end end
 
 -- ═══════════════════════════════════════════════════════
---  SPOOFER (Device, Name, Badges, Leaderboard)
+-- SPOOFER (Device, Name, Badges, Leaderboard)
 -- ═══════════════════════════════════════════════════════
-Features.spoofer = {
-    Device = {Enabled=false, Device="Desktop"},
-    Name = {Enabled=false, DisplayName=LP.DisplayName, Username=LP.Name},
-    Badges = {Premium=false, Verified=false},
-    Leaderboard = {ELO=false, ELOValue=0, Streak=false, StreakValue=0, Level=false, LevelValue=0}
-}
-local spoofedNameLabels = {}
-
--- Device Spoofer
 local SetControlsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
 local deviceMap = {Desktop="MouseKeyboard", Mobile="Touch", Console="Gamepad", VR="VR"}
 
 function Features.spoofDevice()
-    local dev = deviceMap[Features.spoofer.Device.Device] or "MouseKeyboard"
-    if Features.spoofer.Device.Enabled then
+    local dev = deviceMap[Features.spooferSettings.Device] or "MouseKeyboard"
+    if Features.spooferEnabled then
         SetControlsRemote:FireServer(dev)
     else
         SetControlsRemote:FireServer("MouseKeyboard")
@@ -1127,19 +1153,20 @@ end
 local old_index_badge
 old_index_badge = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if self == LP then
-        if key == "MembershipType" and Features.spoofer.Badges.Premium then return Enum.MembershipType.Premium end
-        if key == "HasVerifiedBadge" and Features.spoofer.Badges.Verified then return true end
+        if key == "MembershipType" and Features.spooferSettings.Premium then return Enum.MembershipType.Premium end
+        if key == "HasVerifiedBadge" and Features.spooferSettings.Verified then return true end
     end
     return old_index_badge(self, key)
 end))
 
 -- Name Spoofer
+local spoofedNameLabels = {}
 local function applyNameSpoof(obj)
     if not obj:IsA("TextLabel") and not obj:IsA("TextButton") and not obj:IsA("TextBox") then return end
     local text = obj.Text
-    if Features.spoofer.Name.Enabled then
-        if obj.Name == "DisplayName" then text = text:gsub(LP.DisplayName, Features.spoofer.Name.DisplayName) end
-        if obj.Name == "Username" then text = text:gsub(LP.Name, Features.spoofer.Name.Username) end
+    if Features.spooferEnabled then
+        if obj.Name == "DisplayName" then text = text:gsub(LP.DisplayName, Features.spooferSettings.DisplayName) end
+        if obj.Name == "Username" then text = text:gsub(LP.Name, Features.spooferSettings.Username) end
     end
     if obj.Text ~= text then obj.Text = text end
 end
@@ -1154,19 +1181,15 @@ end)
 -- Leaderboard Spoofer
 task.spawn(function()
     repeat task.wait(0.5) until modules.LeaderboardController
-    if Features.spoofer.Leaderboard.Streak then
-        LP:SetAttribute("StatisticDuelsWinStreak", Features.spoofer.Leaderboard.StreakValue)
+    if Features.spooferSettings.Streak > 0 then
+        LP:SetAttribute("StatisticDuelsWinStreak", Features.spooferSettings.Streak)
     end
-    if Features.spoofer.Leaderboard.Level then
-        LP:SetAttribute("Level", Features.spoofer.Leaderboard.LevelValue)
+    if Features.spooferSettings.Level > 1 then
+        LP:SetAttribute("Level", Features.spooferSettings.Level)
     end
 end)
 
--- ═══════════════════════════════════════════════════════
---  DEVICE SPOOFER (Manual)
--- ═══════════════════════════════════════════════════════
-local autoSpoofDevice = nil
-
+-- Device Spoofer (Manual)
 local function spoofDevice(device)
     SetControlsRemote:FireServer("MouseKeyboard")
     task.wait(0.3)
@@ -1174,25 +1197,34 @@ local function spoofDevice(device)
 end
 
 -- ═══════════════════════════════════════════════════════
---  STAFF DETECTOR
+-- STAFF DETECTOR
 -- ═══════════════════════════════════════════════════════
 Features.staffDetectorEnabled = false
 local staffLoaded = false
+_G.autoleave = false
 
 local function runStaffDetector()
     if staffLoaded then return end; staffLoaded = true
-    shared.StaffDetectorLoading = false; autoload = true; autoleave = false
+    shared.StaffDetectorLoading = false
     loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Ukrubojvo/Modules/main/StaffDetector.lua"))()
 end
 
-function Features.setStaffDetector(on) Features.staffDetectorEnabled = on; if on then staffLoaded = false; runStaffDetector() end end
+function Features.setStaffDetector(on) 
+    Features.staffDetectorEnabled = on
+    if on then 
+        staffLoaded = false
+        runStaffDetector() 
+    end
+end
+
+print("Part 1e Loaded - Unlocker + Spoofer")
 
 -- ═══════════════════════════════════════════════════════
---  PART 1f - KEYBINDS + CONFIG SYSTEM
+-- PART 1f - KEYBINDS + CONFIG SYSTEM
 -- ═══════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════
---  KEYBINDS
+-- KEYBINDS
 -- ═══════════════════════════════════════════════════════
 local Keybinds = {
     aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"},
@@ -1206,7 +1238,7 @@ local Keybinds = {
 local function keyName(kc) if kc == nil then return "None" end; if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
 
 -- ═══════════════════════════════════════════════════════
---  CONFIG SYSTEM
+-- CONFIG SYSTEM
 -- ═══════════════════════════════════════════════════════
 local configFileName = "BoscoHub_V2_Configs.json"
 
@@ -1224,89 +1256,152 @@ end
 local function saveConfig(name, overwrite)
     local configs = getAllConfigs()
     if configs[name] and not overwrite then return false, "Config exists!" end
+    
     local keybindsCopy = {}
     for k, v in pairs(Keybinds) do
         pcall(function() keybindsCopy[k] = {key=v.key.Name, holdMode=v.holdMode, label=v.label} end)
     end
+    
     configs[name] = {
-        aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings,
-        silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings,
-        triggerbot=Features.triggerbotEnabled, triggerbotSettings=Features.triggerbotSettings,
-        flick=Features.flickEnabled, flickSettings=Features.flickSettings,
-        weaponMods=Features.weaponMods,
-        infiniteJump=Features.infiniteJumpEnabled,
-        movement=Features.movement, pluggwalk=Features.pluggwalkEnabled,
-        oobBypass=Features.oobBypassEnabled,
-        viewmodel=Features.viewmodel,
-        esp=Features.espEnabled, espSettings=Features.espSettings,
-        bulletTrails=Features.bulletTrailsEnabled, bulletTrailsColor=Features.bulletTrailsColor,
-        crosshair=Features.crosshairEnabled, crosshairSettings=Features.crosshairSettings,
-        camera=Features.camera, lighting=Features.lighting,
-        stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue,
-        unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled,
-        spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings,
-        staffDetector=Features.staffDetectorEnabled,
-        keybinds=keybindsCopy
+        -- Combat
+        aimbot = Features.aimbotEnabled,
+        aimbotSettings = Features.aimbotSettings,
+        silentAim = Features.silentAimEnabled,
+        silentAimSettings = Features.silentAimSettings,
+        triggerbot = Features.triggerbotEnabled,
+        triggerbotSettings = Features.triggerbotSettings,
+        flick = Features.flickEnabled,
+        flickSettings = Features.flickSettings,
+        weaponMods = Features.weaponMods,
+        
+        -- Movement
+        movement = Features.movement,
+        pluggwalk = Features.pluggwalkEnabled,
+        
+        -- Protection
+        oobBypass = Features.oobBypassEnabled,
+        staffDetector = Features.staffDetectorEnabled,
+        
+        -- Viewmodel
+        viewmodel = Features.viewmodel,
+        
+        -- Visuals
+        esp = Features.espEnabled,
+        espSettings = Features.espSettings,
+        bulletTrails = Features.bulletTrailsEnabled,
+        bulletTrailsColor = Features.bulletTrailsColor,
+        crosshair = Features.crosshairEnabled,
+        crosshairSettings = Features.crosshairSettings,
+        
+        -- Camera
+        camera = Features.camera,
+        
+        -- Environment
+        lighting = Features.lighting,
+        stretchRes = Features.stretchResEnabled,
+        stretchResValue = Features.stretchResValue,
+        
+        -- Unlocker
+        unlockAll = Features.unlockAllEnabled,
+        skinChanger = Features.skinChangerEnabled,
+        
+        -- Spoofer
+        spoofer = Features.spooferEnabled,
+        spooferSettings = Features.spooferSettings,
+        
+        -- Keybinds
+        keybinds = keybindsCopy
     }
-    saveConfigsToFile(configs); return true, "Saved!"
+    saveConfigsToFile(configs)
+    return true, "Saved!"
 end
 
 local function loadConfig(name)
-    local configs = getAllConfigs(); local data = configs[name]
+    local configs = getAllConfigs()
+    local data = configs[name]
     if not data then return false, "Not found!" end
+    
+    -- Combat
     if data.aimbot ~= nil then Features.setAimbot(data.aimbot) end
     if data.aimbotSettings then for k, v in pairs(data.aimbotSettings) do Features.aimbotSettings[k] = v end end
+    
     if data.silentAim ~= nil then Features.setSilentAim(data.silentAim) end
     if data.silentAimSettings then for k, v in pairs(data.silentAimSettings) do Features.silentAimSettings[k] = v end end
+    
     if data.triggerbot ~= nil then Features.setTriggerbot(data.triggerbot) end
     if data.triggerbotSettings then for k, v in pairs(data.triggerbotSettings) do Features.triggerbotSettings[k] = v end end
+    
     if data.flick ~= nil then Features.setFlick(data.flick) end
     if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
+    
     if data.weaponMods then for k, v in pairs(data.weaponMods) do Features.weaponMods[k] = v end end
-    if data.infiniteJump ~= nil then Features.setInfiniteJump(data.infiniteJump) end
+    
+    -- Movement
     if data.movement then for k, v in pairs(data.movement) do Features.movement[k] = v end end
     if data.pluggwalk ~= nil then Features.setPluggWalk(data.pluggwalk) end
+    
+    -- Protection
     if data.oobBypass ~= nil then Features.oobBypassEnabled = data.oobBypass end
+    if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end
+    
+    -- Viewmodel
     if data.viewmodel then for k, v in pairs(data.viewmodel) do Features.viewmodel[k] = v end end
+    
+    -- Visuals
     if data.esp ~= nil then Features.setESP(data.esp) end
-    if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v end end
+    if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v; Features.setESPSetting(k, v) end end
     if data.bulletTrails ~= nil then Features.bulletTrailsEnabled = data.bulletTrails end
     if data.bulletTrailsColor then Features.bulletTrailsColor = data.bulletTrailsColor end
     if data.crosshair ~= nil then Features.crosshairEnabled = data.crosshair end
     if data.crosshairSettings then for k, v in pairs(data.crosshairSettings) do Features.crosshairSettings[k] = v end end
+    
+    -- Camera
     if data.camera then for k, v in pairs(data.camera) do Features.camera[k] = v end end
+    
+    -- Environment
     if data.lighting then for k, v in pairs(data.lighting) do Features.lighting[k] = v end end
     if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end
     if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
+    
+    -- Unlocker
     if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end
     if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end
+    
+    -- Spoofer
     if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end
     if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
-    if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end
-    if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] then Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key; Keybinds[k].holdMode = v.holdMode end end end
+    
+    -- Keybinds
+    if data.keybinds then 
+        for k, v in pairs(data.keybinds) do 
+            if Keybinds[k] then 
+                pcall(function()
+                    Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key
+                    Keybinds[k].holdMode = v.holdMode 
+                end)
+            end 
+        end 
+    end
+    
     return true, "Loaded!"
 end
 
 local function deleteConfig(name)
-    local configs = getAllConfigs(); if not configs[name] then return false end
-    configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!"
+    local configs = getAllConfigs()
+    if not configs[name] then return false, "Not found!" end
+    configs[name] = nil
+    saveConfigsToFile(configs)
+    return true, "Deleted!"
 end
 
 -- Auto-load config on join
-task.wait(1)
+task.wait(2)
 pcall(function()
-    local saved = getAllConfigs()
-    if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
-        loadConfig(saved["__autoLoad"])
-    end
-end)
-
--- Auto execute on teleport
-pcall(function()
-    if queue_on_teleport then
-        local saved = getAllConfigs()
-        if saved["__autoLoadEnabled"] then
-            queue_on_teleport([[loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()]])
+    local configs = getAllConfigs()
+    if configs["__autoLoadEnabled"] and configs["__autoLoad"] then
+        local success, msg = loadConfig(configs["__autoLoad"])
+        if success then
+            print("Bosco Hub: Auto-loaded config: " .. configs["__autoLoad"])
         end
     end
 end)
@@ -1314,7 +1409,7 @@ end)
 print("Bosco Hub V2 Part 1 Complete!")
 
 -- ═══════════════════════════════════════════════════════
---  PART 2 - UI (Bosco Hub V2)
+-- PART 2 - UI (Bosco Hub V2)
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -1469,7 +1564,7 @@ local function createKeybindRow(props)
 end
 
 -- ═══════════════════════════════════════════════════════
---  PART 2c - COMBAT PAGES
+-- PART 2c - COMBAT PAGES
 -- ═══════════════════════════════════════════════════════
 
 -- AIMBOT PAGE
@@ -1538,7 +1633,7 @@ local function renderWeaponMods()
     createDualSlider({title="Firerate %",desc="100=normal 200=2x faster",layoutOrder=lo,default=s.Firerate or 100,min=50,max=300,onChange=function(v)s.Firerate=v end});lo+=1
 end
 
--- Add to navigation
+-- Add Combat navigation
 mkNavHdr("🎯 COMBAT",1)
 mkNav("Aimbot",2,renderAimbot)
 mkNav("Silent Aim",3,renderSilentAim)
@@ -1547,15 +1642,10 @@ mkNav("Triggerbot",5,renderTriggerbot)
 mkNav("Weapon Mods",6,renderWeaponMods)
 
 -- ═══════════════════════════════════════════════════════
---  MOVEMENT PAGES
+-- PART 2d - MOVEMENT + PROTECTION PAGES
 -- ═══════════════════════════════════════════════════════
 
-local function renderInfiniteJump()
-    clearContent();local lo=1
-    secHead("🏃 Infinite Jump",lo);lo+=1
-    createToggle({title="Enable Infinite Jump",desc="Hold space to fly (old method)",layoutOrder=lo,default=Features.infiniteJumpEnabled,onChange=function(on)Features.setInfiniteJump(on)end});lo+=1
-end
-
+-- FLY PAGE
 local function renderFly()
     clearContent();local lo=1;local s=Features.movement
     secHead("🕊 Fly",lo);lo+=1
@@ -1563,6 +1653,7 @@ local function renderFly()
     createDualSlider({title="Fly Speed",desc="Movement speed while flying",layoutOrder=lo,default=s.FlySpeed or 50,min=10,max=200,onChange=function(v)s.FlySpeed=v end});lo+=1
 end
 
+-- VELOCITY PAGE
 local function renderVelocity()
     clearContent();local lo=1;local s=Features.movement
     secHead("💨 Velocity",lo);lo+=1
@@ -1570,6 +1661,7 @@ local function renderVelocity()
     createDualSlider({title="Speed",desc="Movement speed multiplier",layoutOrder=lo,default=s.VelocitySpeed or 50,min=10,max=300,onChange=function(v)s.VelocitySpeed=v end});lo+=1
 end
 
+-- SLIDE BOOST PAGE
 local function renderSlideBoost()
     clearContent();local lo=1;local s=Features.movement
     secHead("🛼 Slide Boost",lo);lo+=1
@@ -1577,30 +1669,28 @@ local function renderSlideBoost()
     createDualSlider({title="Boost Multiplier",desc="Slide speed multiplier",layoutOrder=lo,default=s.SlideBoostValue or 1,min=1,max=10,onChange=function(v)s.SlideBoostValue=v end});lo+=1
 end
 
+-- INF DOUBLE JUMP PAGE
 local function renderInfDoubleJump()
     clearContent();local lo=1;local s=Features.movement
     secHead("🦘 Infinite Double Jump",lo);lo+=1
     createToggle({title="Enable Inf Double Jump",desc="Jump infinitely in the air",layoutOrder=lo,default=s.InfiniteDoubleJump,onChange=function(on)s.InfiniteDoubleJump=on end});lo+=1
 end
 
+-- PLUGGWALK PAGE
 local function renderPluggWalk()
     clearContent();local lo=1
     secHead("👻 PluggWalk",lo);lo+=1
     createToggle({title="Enable PluggWalk",desc="Server CF desync movement (hard to hit)",layoutOrder=lo,default=Features.pluggwalkEnabled,onChange=function(on)Features.setPluggWalk(on)end});lo+=1
 end
 
--- ═══════════════════════════════════════════════════════
---  OOB BYPASS PAGE
--- ═══════════════════════════════════════════════════════
+-- OOB BYPASS PAGE
 local function renderOOBBypass()
     clearContent();local lo=1
-    secHead("🗺 OOB Bypass",lo);lo+=1
-    createToggle({title="Enable OOB Bypass",desc="Prevents out-of-bounds kills",layoutOrder=lo,default=Features.oobBypassEnabled,onChange=function(on)Features.oobBypassEnabled=on end});lo+=1
+    secHead("🌐 OOB Bypass",lo);lo+=1
+    createToggle({title="Enable OOB Bypass",desc="Prevents out-of-bounds death",layoutOrder=lo,default=Features.oobBypassEnabled,onChange=function(on)Features.oobBypassEnabled=on end});lo+=1
 end
 
--- ═══════════════════════════════════════════════════════
---  VIEWMODEL PAGE
--- ═══════════════════════════════════════════════════════
+-- VIEWMODEL PAGE
 local function renderViewmodel()
     clearContent();local lo=1;local s=Features.viewmodel
     secHead("🔧 Viewmodel",lo);lo+=1
@@ -1620,31 +1710,36 @@ local function renderViewmodel()
     end
 end
 
--- ═══════════════════════════════════════════════════════
---  NAVIGATION (Movement + Protection)
--- ═══════════════════════════════════════════════════════
+-- STAFF DETECTOR PAGE
+local function renderStaffDetector()
+    clearContent();local lo=1
+    secHead("🛡 Staff Detector",lo);lo+=1
+    createToggle({title="Enable Staff Detector",desc="Warns when Rivals moderators join",layoutOrder=lo,default=Features.staffDetectorEnabled,onChange=function(on)Features.setStaffDetector(on);if on then showToast("Staff Detector active!")end end});lo+=1
+    createToggle({title="Auto Leave",desc="Instantly leave if mod detected",layoutOrder=lo,default=_G.autoleave or false,onChange=function(on)_G.autoleave=on end});lo+=1
+end
+
+-- Add Movement + Protection navigation
 mkSep(sbScroll,5)
 mkNavHdr("🏃 MOVEMENT",6)
 mkNav("Fly",7,renderFly)
 mkNav("Velocity",8,renderVelocity)
 mkNav("Slide Boost",9,renderSlideBoost)
 mkNav("Inf Double Jump",10,renderInfDoubleJump)
-mkNav("Infinite Jump",11,renderInfiniteJump)
-mkNav("PluggWalk",12,renderPluggWalk)
-mkSep(sbScroll,13)
-mkNavHdr("🔧 VIEWMODEL",14)
-mkNav("Viewmodel",15,renderViewmodel)
-mkSep(sbScroll,16)
-mkNavHdr("🛡 PROTECTION",17)
-mkNav("OOB Bypass",18,renderOOBBypass)
-mkNav("Staff Detector",19,renderStaffDetector)
-mkSep(sbScroll,20)
+mkNav("PluggWalk",11,renderPluggWalk)
+mkSep(sbScroll,12)
+mkNavHdr("🔧 VIEWMODEL",13)
+mkNav("Viewmodel",14,renderViewmodel)
+mkSep(sbScroll,15)
+mkNavHdr("🛡 PROTECTION",16)
+mkNav("OOB Bypass",17,renderOOBBypass)
+mkNav("Staff Detector",18,renderStaffDetector)
+mkSep(sbScroll,19)
 
 -- ═══════════════════════════════════════════════════════
---  PART 2e - REMAINING UI PAGES
+-- PART 2e - VISUALS + CAMERA + ENVIRONMENT PAGES
 -- ═══════════════════════════════════════════════════════
 
--- ESP Page
+-- ESP PAGE
 local function renderESP()
     clearContent();local lo=1;local s=Features.espSettings
     secHead("👁 ESP",lo);lo+=1
@@ -1656,14 +1751,14 @@ local function renderESP()
     createToggle({title="Team Check",desc="Only show enemies",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on;Features.setESPSetting("TeamCheck",on)end});lo+=1
 end
 
--- Bullet Trails Page
+-- BULLET TRAILS PAGE
 local function renderBulletTrails()
     clearContent();local lo=1
     secHead("🔫 Bullet Trails",lo);lo+=1
     createToggle({title="Enable Bullet Trails",desc="Show bullet trajectory lines",layoutOrder=lo,default=Features.bulletTrailsEnabled,onChange=function(on)Features.bulletTrailsEnabled=on end});lo+=1
 end
 
--- Crosshair Page
+-- CROSSHAIR PAGE
 local function renderCrosshair()
     clearContent();local lo=1;local s=Features.crosshairSettings
     secHead("➕ Crosshair",lo);lo+=1
@@ -1674,7 +1769,7 @@ local function renderCrosshair()
     createDualSlider({title="Rotation",desc="Rotation angle",layoutOrder=lo,default=s.Rotation,min=0,max=360,onChange=function(v)s.Rotation=v end});lo+=1
 end
 
--- Camera Page
+-- CAMERA PAGE
 local function renderCamera()
     clearContent();local lo=1;local s=Features.camera
     secHead("📷 Camera",lo);lo+=1
@@ -1684,7 +1779,7 @@ local function renderCamera()
     createDualSlider({title="Resolution",desc="1.0 = normal | 0.5 = stretched",layoutOrder=lo,default=s.Resolution,min=0.1,max=2,onChange=function(v)s.Resolution=v end});lo+=1
 end
 
--- Lighting Page
+-- LIGHTING PAGE
 local function renderLighting()
     clearContent();local lo=1;local s=Features.lighting
     secHead("💡 Lighting",lo);lo+=1
@@ -1693,7 +1788,7 @@ local function renderLighting()
     createDualSlider({title="Exposure",desc="Exposure compensation",layoutOrder=lo,default=s.Exposure,min=-5,max=5,onChange=function(v)s.Exposure=v end});lo+=1
 end
 
--- Stretch Res Page
+-- STRETCH RES PAGE
 local function renderStretchRes()
     clearContent();local lo=1
     secHead("📐 Stretch Res",lo);lo+=1
@@ -1701,15 +1796,48 @@ local function renderStretchRes()
     local stretchRow=mkRow("Stretch Value",lo,52);lo+=1
     mkLabel({Parent=stretchRow,Text="Stretch Amount",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
     mkLabel({Parent=stretchRow,Text="1.0 = normal | 0.0 = max",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
-    local stretchInput=Instance.new("TextBox",stretchRow)
-    stretchInput.Size=UDim2.fromOffset(70,26);stretchInput.Position=UDim2.new(1,-70,0.5,-13)
-    stretchInput.Text=tostring(Features.stretchResValue);stretchInput.TextColor3=C.text
-    stretchInput.BackgroundColor3=C.activeDim;stretchInput.Font=FONT;stretchInput.TextSize=12;stretchInput.BorderSizePixel=0
-    mkCorner(stretchInput,CR_SM);mkStroke(stretchInput,C.accent,0,1)
-    stretchInput.FocusLost:Connect(function(ep)if ep then local num=tonumber(stretchInput.Text)if num and num>=0 and num<=1 then Features.stretchResValue=num end end end)
+    local stretchInput=Instance.new("TextBox")
+    stretchInput.Size=UDim2.fromOffset(70,26)
+    stretchInput.Position=UDim2.new(1,-70,0.5,-13)
+    stretchInput.Text=tostring(Features.stretchResValue)
+    stretchInput.TextColor3=C.text
+    stretchInput.BackgroundColor3=C.activeDim
+    stretchInput.Font=FONT
+    stretchInput.TextSize=12
+    stretchInput.BorderSizePixel=0
+    stretchInput.Parent=stretchRow
+    mkCorner(stretchInput,CR_SM)
+    mkStroke(stretchInput,C.accent,0,1)
+    stretchInput.FocusLost:Connect(function(ep)
+        if ep then 
+            local num=tonumber(stretchInput.Text)
+            if num and num>=0 and num<=1 then 
+                Features.stretchResValue=num 
+                stretchInput.Text=tostring(num)
+            end
+        end
+    end)
 end
 
--- Unlock All Page
+-- Add Visuals + Camera + Environment navigation
+mkSep(sbScroll,20)
+mkNavHdr("👁 VISUALS",21)
+mkNav("ESP",22,renderESP)
+mkNav("Bullet Trails",23,renderBulletTrails)
+mkNav("Crosshair",24,renderCrosshair)
+mkSep(sbScroll,25)
+mkNavHdr("📷 CAMERA",26)
+mkNav("Camera",27,renderCamera)
+mkSep(sbScroll,28)
+mkNavHdr("💡 ENVIRONMENT",29)
+mkNav("Lighting",30,renderLighting)
+mkNav("Stretch Res",31,renderStretchRes)
+
+-- ═══════════════════════════════════════════════════════
+-- PART 2f - UNLOCKER + SPOOFER + CONFIG PAGES
+-- ═══════════════════════════════════════════════════════
+
+-- UNLOCK ALL PAGE
 local function renderUnlockAll()
     clearContent();local lo=1
     secHead("🎨 Unlock All",lo);lo+=1
@@ -1717,31 +1845,47 @@ local function renderUnlockAll()
     createActionRow({title="Unlock All Weapons",desc="Press to unlock all weapons",layoutOrder=lo,buttonText="🔫 UNLOCK WEAPONS",onClick=function()Features.setUnlockWeapons(true);showToast("Unlocking weapons...")end});lo+=1
 end
 
--- Spoofer Page
+-- SPOOFER PAGE
 local function renderSpoofer()
     clearContent();local lo=1;local s=Features.spooferSettings
+    
     secHead("🎭 Spoofer",lo);lo+=1
+    createToggle({title="Enable Spoofer",desc="Master toggle for all spoofing",layoutOrder=lo,default=Features.spooferEnabled,onChange=function(on)Features.setSpoofer(on)end});lo+=1
     
     -- Name Spoofing
     secHead("📝 Name Spoofer",lo);lo+=1
     local nameRow=mkRow("Display Name",lo,52);lo+=1
     mkLabel({Parent=nameRow,Text="Display Name",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    local nameInput=Instance.new("TextBox",nameRow)
-    nameInput.Size=UDim2.fromOffset(120,26);nameInput.Position=UDim2.new(1,-120,0.5,-13)
-    nameInput.Text=tostring(s.DisplayName or LP.DisplayName);nameInput.PlaceholderText="Display Name"
-    nameInput.TextColor3=C.text;nameInput.BackgroundColor3=C.activeDim
-    nameInput.Font=FONT;nameInput.TextSize=12;nameInput.BorderSizePixel=0
-    mkCorner(nameInput,CR_SM);mkStroke(nameInput,C.accent,0,1)
+    local nameInput=Instance.new("TextBox")
+    nameInput.Size=UDim2.fromOffset(120,26)
+    nameInput.Position=UDim2.new(1,-120,0.5,-13)
+    nameInput.Text=tostring(s.DisplayName or LP.DisplayName)
+    nameInput.PlaceholderText="Display Name"
+    nameInput.TextColor3=C.text
+    nameInput.BackgroundColor3=C.activeDim
+    nameInput.Font=FONT
+    nameInput.TextSize=12
+    nameInput.BorderSizePixel=0
+    nameInput.Parent=nameRow
+    mkCorner(nameInput,CR_SM)
+    mkStroke(nameInput,C.accent,0,1)
     nameInput.FocusLost:Connect(function(ep)if ep then s.DisplayName=nameInput.Text end end)
     
     local userRow=mkRow("Username",lo,52);lo+=1
     mkLabel({Parent=userRow,Text="Username",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    local userInput=Instance.new("TextBox",userRow)
-    userInput.Size=UDim2.fromOffset(120,26);userInput.Position=UDim2.new(1,-120,0.5,-13)
-    userInput.Text=tostring(s.Username or LP.Name);userInput.PlaceholderText="Username"
-    userInput.TextColor3=C.text;userInput.BackgroundColor3=C.activeDim
-    userInput.Font=FONT;userInput.TextSize=12;userInput.BorderSizePixel=0
-    mkCorner(userInput,CR_SM);mkStroke(userInput,C.accent,0,1)
+    local userInput=Instance.new("TextBox")
+    userInput.Size=UDim2.fromOffset(120,26)
+    userInput.Position=UDim2.new(1,-120,0.5,-13)
+    userInput.Text=tostring(s.Username or LP.Name)
+    userInput.PlaceholderText="Username"
+    userInput.TextColor3=C.text
+    userInput.BackgroundColor3=C.activeDim
+    userInput.Font=FONT
+    userInput.TextSize=12
+    userInput.BorderSizePixel=0
+    userInput.Parent=userRow
+    mkCorner(userInput,CR_SM)
+    mkStroke(userInput,C.accent,0,1)
     userInput.FocusLost:Connect(function(ep)if ep then s.Username=userInput.Text end end)
     
     -- Badges
@@ -1753,32 +1897,53 @@ local function renderSpoofer()
     secHead("📊 Leaderboard",lo);lo+=1
     local eloRow=mkRow("ELO",lo,52);lo+=1
     mkLabel({Parent=eloRow,Text="Spoofed ELO",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    local eloInput=Instance.new("TextBox",eloRow)
-    eloInput.Size=UDim2.fromOffset(80,26);eloInput.Position=UDim2.new(1,-80,0.5,-13)
-    eloInput.Text=tostring(s.ELO or 0);eloInput.PlaceholderText="ELO"
-    eloInput.TextColor3=C.text;eloInput.BackgroundColor3=C.activeDim
-    eloInput.Font=FONT;eloInput.TextSize=12;eloInput.BorderSizePixel=0
-    mkCorner(eloInput,CR_SM);mkStroke(eloInput,C.accent,0,1)
+    local eloInput=Instance.new("TextBox")
+    eloInput.Size=UDim2.fromOffset(80,26)
+    eloInput.Position=UDim2.new(1,-80,0.5,-13)
+    eloInput.Text=tostring(s.ELO or 0)
+    eloInput.PlaceholderText="ELO"
+    eloInput.TextColor3=C.text
+    eloInput.BackgroundColor3=C.activeDim
+    eloInput.Font=FONT
+    eloInput.TextSize=12
+    eloInput.BorderSizePixel=0
+    eloInput.Parent=eloRow
+    mkCorner(eloInput,CR_SM)
+    mkStroke(eloInput,C.accent,0,1)
     eloInput.FocusLost:Connect(function(ep)if ep then local n=tonumber(eloInput.Text)if n then s.ELO=n end end end)
     
     local streakRow=mkRow("Win Streak",lo,52);lo+=1
     mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    local streakInput=Instance.new("TextBox",streakRow)
-    streakInput.Size=UDim2.fromOffset(80,26);streakInput.Position=UDim2.new(1,-80,0.5,-13)
-    streakInput.Text=tostring(s.Streak or 0);streakInput.PlaceholderText="Streak"
-    streakInput.TextColor3=C.text;streakInput.BackgroundColor3=C.activeDim
-    streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
-    mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
+    local streakInput=Instance.new("TextBox")
+    streakInput.Size=UDim2.fromOffset(80,26)
+    streakInput.Position=UDim2.new(1,-80,0.5,-13)
+    streakInput.Text=tostring(s.Streak or 0)
+    streakInput.PlaceholderText="Streak"
+    streakInput.TextColor3=C.text
+    streakInput.BackgroundColor3=C.activeDim
+    streakInput.Font=FONT
+    streakInput.TextSize=12
+    streakInput.BorderSizePixel=0
+    streakInput.Parent=streakRow
+    mkCorner(streakInput,CR_SM)
+    mkStroke(streakInput,C.accent,0,1)
     streakInput.FocusLost:Connect(function(ep)if ep then local n=tonumber(streakInput.Text)if n then s.Streak=n end end end)
     
     local levelRow=mkRow("Level",lo,52);lo+=1
     mkLabel({Parent=levelRow,Text="Level",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    local levelInput=Instance.new("TextBox",levelRow)
-    levelInput.Size=UDim2.fromOffset(80,26);levelInput.Position=UDim2.new(1,-80,0.5,-13)
-    levelInput.Text=tostring(s.Level or 1);levelInput.PlaceholderText="Level"
-    levelInput.TextColor3=C.text;levelInput.BackgroundColor3=C.activeDim
-    levelInput.Font=FONT;levelInput.TextSize=12;levelInput.BorderSizePixel=0
-    mkCorner(levelInput,CR_SM);mkStroke(levelInput,C.accent,0,1)
+    local levelInput=Instance.new("TextBox")
+    levelInput.Size=UDim2.fromOffset(80,26)
+    levelInput.Position=UDim2.new(1,-80,0.5,-13)
+    levelInput.Text=tostring(s.Level or 1)
+    levelInput.PlaceholderText="Level"
+    levelInput.TextColor3=C.text
+    levelInput.BackgroundColor3=C.activeDim
+    levelInput.Font=FONT
+    levelInput.TextSize=12
+    levelInput.BorderSizePixel=0
+    levelInput.Parent=levelRow
+    mkCorner(levelInput,CR_SM)
+    mkStroke(levelInput,C.accent,0,1)
     levelInput.FocusLost:Connect(function(ep)if ep then local n=tonumber(levelInput.Text)if n then s.Level=n end end end)
     
     -- Device Spoofer
@@ -1789,17 +1954,233 @@ local function renderSpoofer()
     end
 end
 
--- Staff Detector Page
-local function renderStaffDetector()
+-- CONFIG PAGE
+local function renderConfig()
     clearContent();local lo=1
-    secHead("🛡 Staff Detector",lo);lo+=1
-    createToggle({title="Enable Staff Detector",desc="Warns when Rivals moderators join",layoutOrder=lo,default=Features.staffDetectorEnabled,onChange=function(on)Features.setStaffDetector(on);if on then showToast("Staff Detector active!")end end});lo+=1
-    createToggle({title="Auto Leave",desc="Instantly leave if mod detected",layoutOrder=lo,default=false,onChange=function(on)autoleave=on end});lo+=1
+    secHead("💾 Config",lo);lo+=1
+    
+    -- Save Config
+    local saveRow=mkRow("Save Config",lo,72);lo+=1
+    mkLabel({Parent=saveRow,Text="Save current settings",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    local configNameInput=Instance.new("TextBox")
+    configNameInput.Size=UDim2.fromOffset(140,26)
+    configNameInput.Position=UDim2.fromOffset(0,24)
+    configNameInput.PlaceholderText="Config name"
+    configNameInput.TextColor3=C.text
+    configNameInput.BackgroundColor3=C.activeDim
+    configNameInput.Font=FONT
+    configNameInput.TextSize=12
+    configNameInput.BorderSizePixel=0
+    configNameInput.Parent=saveRow
+    mkCorner(configNameInput,CR_SM)
+    mkStroke(configNameInput,C.accent,0,1)
+    local saveBtn=Instance.new("TextButton")
+    saveBtn.Size=UDim2.fromOffset(80,26)
+    saveBtn.Position=UDim2.new(1,-80,0.5,-13)
+    saveBtn.BackgroundColor3=C.activeDim
+    saveBtn.Font=FONT_MED
+    saveBtn.TextSize=12
+    saveBtn.Text="SAVE"
+    saveBtn.TextColor3=C.text
+    saveBtn.AutoButtonColor=false
+    saveBtn.Parent=saveRow
+    mkCorner(saveBtn,CR_SM)
+    mkStroke(saveBtn,C.accent,0,1)
+    mkGradient(saveBtn,C.accent,Color3.fromRGB(100,20,200))
+    saveBtn.MouseButton1Click:Connect(function()
+        local name=configNameInput.Text
+        if name==""then showToast("Enter a config name!")return end
+        local success,msg=saveConfig(name,true)
+        showToast(msg)
+    end)
+    
+    -- Load Config
+    local loadRow=mkRow("Load Config",lo,52);lo+=1
+    mkLabel({Parent=loadRow,Text="Load saved config",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local loadDropdown=Instance.new("TextButton")
+    loadDropdown.Size=UDim2.fromOffset(140,28)
+    loadDropdown.Position=UDim2.new(1,-140,0.5,-14)
+    loadDropdown.BackgroundColor3=C.activeDim
+    loadDropdown.Font=FONT
+    loadDropdown.TextSize=12
+    loadDropdown.Text="Select config  ▼"
+    loadDropdown.TextColor3=C.accentBrt
+    loadDropdown.TextXAlignment=Enum.TextXAlignment.Left
+    loadDropdown.AutoButtonColor=false
+    loadDropdown.Parent=loadRow
+    mkCorner(loadDropdown,CR_SM)
+    mkStroke(loadDropdown,C.accent,0,1)
+    
+    local loadMenu=Instance.new("Frame")
+    loadMenu.BackgroundColor3=C.panel
+    loadMenu.BorderSizePixel=0
+    loadMenu.Size=UDim2.fromOffset(200,0)
+    loadMenu.Visible=false
+    loadMenu.ZIndex=50
+    loadMenu.Parent=loadRow
+    mkCorner(loadMenu,CR_SM)
+    mkStroke(loadMenu,C.accent,0,1)
+    local loadMenuList=Instance.new("UIListLayout")
+    loadMenuList.SortOrder=Enum.SortOrder.LayoutOrder
+    loadMenuList.Parent=loadMenu
+    
+    local function refreshLoadMenu()
+        for _,c in ipairs(loadMenu:GetChildren())do if c:IsA("TextButton")then c:Destroy()end end
+        local configs=getAllConfigs()
+        local count=0
+        for name,_ in pairs(configs)do
+            if name:sub(1,2)~="__"then
+                count=count+1
+                local btn=Instance.new("TextButton")
+                btn.Size=UDim2.new(1,0,0,28)
+                btn.BackgroundColor3=C.row
+                btn.Font=FONT
+                btn.TextSize=12
+                btn.Text="  "..name
+                btn.TextColor3=C.text
+                btn.TextXAlignment=Enum.TextXAlignment.Left
+                btn.AutoButtonColor=false
+                btn.LayoutOrder=count
+                btn.Parent=loadMenu
+                btn.MouseButton1Click:Connect(function()
+                    local success,msg=loadConfig(name)
+                    showToast(msg)
+                    loadMenu.Visible=false
+                end)
+            end
+        end
+        loadMenu.Size=UDim2.fromOffset(200,count*28+4)
+    end
+    
+    loadDropdown.MouseButton1Click:Connect(function()
+        refreshLoadMenu()
+        loadMenu.Visible=not loadMenu.Visible
+    end)
+    
+    -- Delete Config
+    local delRow=mkRow("Delete Config",lo,52);lo+=1
+    mkLabel({Parent=delRow,Text="Remove saved config",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local delInput=Instance.new("TextBox")
+    delInput.Size=UDim2.fromOffset(120,26)
+    delInput.Position=UDim2.new(1,-120,0.5,-13)
+    delInput.PlaceholderText="Config name"
+    delInput.TextColor3=C.text
+    delInput.BackgroundColor3=C.activeDim
+    delInput.Font=FONT
+    delInput.TextSize=12
+    delInput.BorderSizePixel=0
+    delInput.Parent=delRow
+    mkCorner(delInput,CR_SM)
+    mkStroke(delInput,C.accent,0,1)
+    local delBtn=Instance.new("TextButton")
+    delBtn.Size=UDim2.fromOffset(60,26)
+    delBtn.Position=UDim2.new(1,-190,0.5,-13)
+    delBtn.BackgroundColor3=Color3.fromRGB(80,10,10)
+    delBtn.Font=FONT_MED
+    delBtn.TextSize=12
+    delBtn.Text="DEL"
+    delBtn.TextColor3=C.text
+    delBtn.AutoButtonColor=false
+    delBtn.Parent=delRow
+    mkCorner(delBtn,CR_SM)
+    mkStroke(delBtn,C.accent2,0,1)
+    delBtn.MouseButton1Click:Connect(function()
+        local name=delInput.Text
+        if name==""then showToast("Enter config name!")return end
+        local success,msg=deleteConfig(name)
+        showToast(msg)
+    end)
+    
+    -- Auto Load
+    secHead("🔄 Auto Load",lo);lo+=1
+    local autoRow=mkRow("Auto Load Config",lo,72);lo+=1
+    mkLabel({Parent=autoRow,Text="Auto load on spawn",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    local autoInput=Instance.new("TextBox")
+    autoInput.Size=UDim2.fromOffset(120,26)
+    autoInput.Position=UDim2.fromOffset(0,24)
+    autoInput.PlaceholderText="Config name"
+    autoInput.Text=tostring(getAllConfigs()["__autoLoad"] or "")
+    autoInput.TextColor3=C.text
+    autoInput.BackgroundColor3=C.activeDim
+    autoInput.Font=FONT
+    autoInput.TextSize=12
+    autoInput.BorderSizePixel=0
+    autoInput.Parent=autoRow
+    mkCorner(autoInput,CR_SM)
+    mkStroke(autoInput,C.accent,0,1)
+    
+    local autoEnabled=false
+    local autoToggle=Instance.new("TextButton")
+    autoToggle.Size=UDim2.fromOffset(80,26)
+    autoToggle.Position=UDim2.new(1,-80,0.5,-13)
+    autoToggle.Font=FONT_MED
+    autoToggle.TextSize=11
+    autoToggle.Text="ENABLE"
+    autoToggle.BackgroundColor3=C.toggleOff
+    autoToggle.TextColor3=C.text
+    autoToggle.AutoButtonColor=false
+    autoToggle.Parent=autoRow
+    mkCorner(autoToggle,CR_SM)
+    
+    autoToggle.MouseButton1Click:Connect(function()
+        autoEnabled=not autoEnabled
+        if autoEnabled then
+            autoToggle.Text="ENABLED"
+            autoToggle.BackgroundColor3=C.accent
+            mkGradient(autoToggle,C.accent,C.accentBrt)
+            local configs=getAllConfigs()
+            configs["__autoLoadEnabled"]=true
+            configs["__autoLoad"]=autoInput.Text
+            saveConfigsToFile(configs)
+            showToast("Auto-load enabled: "..autoInput.Text)
+        else
+            autoToggle.Text="ENABLE"
+            for _,v in ipairs(autoToggle:GetChildren())do if v:IsA("UIGradient")then v:Destroy()end end
+            autoToggle.BackgroundColor3=C.toggleOff
+            local configs=getAllConfigs()
+            configs["__autoLoadEnabled"]=false
+            saveConfigsToFile(configs)
+            showToast("Auto-load disabled")
+        end
+    end)
 end
 
--- OOB Bypass Page
-local function renderOOBBypass()
+-- KEYBINDS PAGE
+local function renderKeybinds()
     clearContent();local lo=1
-    secHead("🌐 OOB Bypass",lo);lo+=1
-    createToggle({title="Enable OOB Bypass",desc="Prevents out-of-bounds death",layoutOrder=lo,default=Features.oobBypassEnabled,onChange=function(on)Features.oobBypassEnabled=on end});lo+=1
+    secHead("⌨ Keybinds",lo);lo+=1
+    
+    for id, _ in pairs(Keybinds) do
+        createKeybindRow({id=id,layoutOrder=lo});lo+=1
+    end
 end
+
+-- Add Unlocker + Spoofer + Config + Keybinds navigation
+mkSep(sbScroll,32)
+mkNavHdr("🎨 COSMETIC",33)
+mkNav("Unlock All",34,renderUnlockAll)
+mkSep(sbScroll,35)
+mkNavHdr("🎭 SPOOFER",36)
+mkNav("Spoofer",37,renderSpoofer)
+mkSep(sbScroll,38)
+mkNavHdr("⚙ SETTINGS",39)
+mkNav("Config",40,renderConfig)
+mkNav("Keybinds",41,renderKeybinds)
+
+-- Window controls
+winClose.MouseButton1Click:Connect(function()root.Visible=false end)
+winMin.MouseButton1Click:Connect(function()root.Visible=false end)
+
+-- Open/Close with RightShift or RightCtrl
+UIS.InputBegan:Connect(function(input)
+    if input.KeyCode==Enum.KeyCode.RightShift or input.KeyCode==Enum.KeyCode.RightControl then
+        root.Visible=not root.Visible
+    end
+end)
+
+-- Default to Aimbot page
+setNavActive(navBtns["Aimbot"])
+renderAimbot()
+
+print("Bosco Hub V2 UI Loaded!")
+showToast("Bosco Hub v2 release loaded!")
