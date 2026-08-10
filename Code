@@ -2645,4 +2645,20 @@ setNavActive(navBtns["Aimbot"])
 renderAimbot()
 
 showToast("Bosco Hub v2 loaded!")
+
+-- Auto-load config on spawn (runs after everything is initialized)
+task.wait(5)
+pcall(function()
+    local configs = getAllConfigs()
+    if configs["__autoLoadEnabled"] and configs["__autoLoad"] and configs["__autoLoad"] ~= "" then
+        local success, msg = loadConfig(configs["__autoLoad"])
+        if success then
+            print("Bosco Hub: Auto-loaded config: " .. configs["__autoLoad"])
+            showToast("Auto-loaded: " .. configs["__autoLoad"])
+        else
+            warn("Auto-load failed: " .. (msg or "unknown error"))
+        end
+    end
+end)
+
 print("Bosco Hub V2 Complete!")
