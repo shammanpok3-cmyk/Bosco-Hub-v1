@@ -1,6 +1,6 @@
 --[[
     Bosco Hub V2 — LocalScript (PC)
-    Reborn from Aetherea
+    Full Version - All Features
     RightShift / RightCtrl → open/close menu
 ]]
 
@@ -193,13 +193,12 @@ repeat task.wait(0.5) until modules.Gun and modules.FighterController
 print("Bosco Hub V2 Core Loaded")
 
 -- ═══════════════════════════════════════════════════════
--- PART 1b - COMBAT FEATURES
+-- PART 1b - COMBAT FEATURES (Aimbot, Silent Aim, Flick, Triggerbot, Weapon Mods)
 -- ═══════════════════════════════════════════════════════
 
 -- Server CF State
 local server_cf_sync = true
 local server_cf = nil
-
 local function ServerCFDesync() server_cf_sync = false end
 local function ServerCFSync() server_cf_sync = true end
 
@@ -563,13 +562,333 @@ end)
 print("Part 1b Loaded - Combat Features")
 
 -- ═══════════════════════════════════════════════════════
--- PART 1c - MOVEMENT + OOB + VIEWMODEL
+-- PART 1c - RAGE BOT + VOID SPAM + ANTI AIM
+-- ═══════════════════════════════════════════════════════
+
+-- Rage State
+Features.rageBotEnabled = false
+Features.voidSpamEnabled = false
+Features.antiAimEnabled = false
+
+Features.rageBotSettings = {
+    enabled = false,
+    void_spam = false,
+    hide = 0.5,
+    attack = 0.3,
+    shoot_attempts = 1,
+    attack_mode = "Gun",
+    preferred = "Primary",
+    rage_hud = true,
+    hit_notifications = true
+}
+
+Features.antiAimSettings = {
+    enabled = false,
+    pitch = "None",
+    pitch_angle = 0,
+    yaw = "None",
+    yaw_angle = 0,
+    speed = 10,
+    jitter_angle = 90,
+    underground = false
+}
+
+-- ═══════════════════════════════════════════════════════
+-- RAGE BOT (from Part 3a)
+-- ═══════════════════════════════════════════════════════
+local rage_active = false
+local last_action_time = 0
+local shoot_pending = false
+local shoot_ready_at = 0
+local void_phase = false
+local last_switch = 0
+
+local function GetShootCooldown()
+    local fighter = modules.FighterController:GetFighter(LP)
+    local equipped_item = fighter and fighter.EquippedItem
+    local info = equipped_item and equipped_item.Info
+    if info and info.ShootCooldown then
+        return math.max(0.02, info.ShootCooldown)
+    end
+    return 0.05
+end
+
+local function HasAmmo(item)
+    if not item then return false end
+    return (item:Get("Ammo") or 0) > 0 or (item:Get("AmmoReserve") or 0) > 0
+end
+
+local function EquipBestWeapon()
+    local state = Features.rageBotSettings
+    local fighter = modules.FighterController:GetFighter(LP)
+    if not fighter then return end
+    
+    local desired_slot
+    if state.attack_mode == "Knife" or state.attack_mode == "Melee" then
+        desired_slot = 3
+    else
+        local primary = fighter.Items and fighter.Items[1]
+        local secondary = fighter.Items and fighter.Items[2]
+        if not primary and not secondary then return end
+        
+        if state.preferred == "Secondary" then
+            if HasAmmo(secondary) then desired_slot = 2
+            elseif HasAmmo(primary) then desired_slot = 1 end
+        else
+            if HasAmmo(primary) then desired_slot = 1
+            elseif HasAmmo(secondary) then desired_slot = 2 end
+        end
+    end
+    
+    if desired_slot and fighter.Items[desired_slot] and not fighter.Items[desired_slot].IsEquipped then
+        fighter:EquipItem(desired_slot)
+    end
+end
+
+local function EditServerCF(force_hide)
+    local state = Features.rageBotSettings
+    if not state.enabled or Features.pluggwalkEnabled then return end
+    
+    local root = LP.Character and LP.Character.PrimaryPart
+    if not root or not root.Parent then return end
+    
+    local target = lockedTarget
+    if not target then return end
+    
+    local target_cf = target.CFrame * CFrame.new(0, 0, 2)
+    
+    if not state.void_spam then
+        server_cf = target_cf
+        return
+    end
+    
+    if force_hide then
+        void_phase = true
+    else
+        local now = tick()
+        local duration = void_phase and state.hide or state.attack
+        if now - last_switch >= duration then
+            void_phase = not void_phase
+            last_switch = now
+        end
+    end
+    
+    if void_phase then
+        local pos = target_cf.Position
+        local far_pos = Vector3.new(math.random(-10000, 10000), -999999999, math.random(-10000, 10000))
+        server_cf = CFrame.new(far_pos) * (target_cf - pos)
+    else
+        server_cf = target_cf
+    end
+end
+
+local function StartRage()
+    rage_active = true
+    ServerCFDesync()
+end
+
+local function FinishRage()
+    rage_active = false
+    last_action_time = 0
+    shoot_pending = false
+    shoot_ready_at = 0
+    modules.MechanicsController:EquippedItemInput("FinishShooting")
+    void_phase = false
+    last_switch = 0
+    ServerCFSync()
+end
+
+-- Rage Bot Render Step
+RunService.RenderStepped:Connect(function()
+    local state = Features.rageBotSettings
+    if not state.enabled then
+        if rage_active then FinishRage() end
+        return
+    end
+    
+    if Features.pluggwalkEnabled then
+        if rage_active then FinishRage() end
+        return
+    end
+    
+    local root = LP.Character and LP.Character.PrimaryPart
+    if not root then
+        if rage_active then FinishRage() end
+        return
+    end
+    
+    local can_attack = lockedTarget and not (LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") and LP.Character:FindFirstChildOfClass("Humanoid").Health <= 0)
+    
+    if not can_attack then
+        shoot_pending = false
+        shoot_ready_at = 0
+        modules.MechanicsController:EquippedItemInput("FinishShooting")
+        if state.void_spam then
+            ServerCFDesync()
+            EditServerCF(true)
+        else
+            ServerCFSync()
+        end
+        return
+    else
+        ServerCFDesync()
+        EquipBestWeapon()
+        EditServerCF()
+    end
+    
+    if not rage_active then StartRage() end
+    
+    local now = os.clock()
+    if not void_phase then
+        if not shoot_pending then
+            if now - last_action_time >= GetShootCooldown() then
+                local ping_delay = LP:GetNetworkPing()
+                shoot_ready_at = now + math.max(0.03, ping_delay)
+                shoot_pending = true
+            end
+        else
+            if now >= shoot_ready_at then
+                last_action_time = now
+                shoot_pending = false
+                
+                for _ = 1, state.shoot_attempts do
+                    local action = (state.attack_mode == "Knife") and "StartAiming" or "StartShooting"
+                    modules.MechanicsController:EquippedItemInput(action)
+                end
+            end
+        end
+    end
+end)
+
+function Features.setRageBot(on)
+    Features.rageBotEnabled = on
+    Features.rageBotSettings.enabled = on
+    if not on and rage_active then FinishRage() end
+end
+
+function Features.setVoidSpam(on)
+    Features.voidSpamEnabled = on
+    Features.rageBotSettings.void_spam = on
+end
+
+-- ═══════════════════════════════════════════════════════
+-- ANTI AIM (from Part 3a)
+-- ═══════════════════════════════════════════════════════
+local spin_angle = 0
+local jitter_angle = 0
+local last_jitter = 0
+
+local function StrongRandom(min, max, entropy)
+    local seed = (os.clock() * 1e9 + tick() * 1e6 + math.random(1, 1e9) + (entropy or 0) * 1337)
+    seed = math.abs(math.sin(seed) * 1e14)
+    local rng = Random.new(seed % 2^31)
+    return rng:NextNumber(min, max)
+end
+
+local function RandomAngle(min, max, entropy)
+    return math.rad(StrongRandom(min, max, entropy))
+end
+
+local pitch_handlers = {
+    Offset = function(state) return math.rad(state.pitch_angle) end,
+    Custom = function(state) return math.rad(state.pitch_angle) end,
+    Random = function(state) return RandomAngle(-89, 89, state.pitch_angle) end,
+    ["Look Up"] = function() return math.rad(-89) end,
+    ["Look Down"] = function() return math.rad(89) end,
+}
+
+local yaw_handlers = {
+    Offset = function(state) return math.rad(state.yaw_angle) end,
+    Custom = function(state) return math.rad(state.yaw_angle) end,
+    Random = function(state) return RandomAngle(-180, 180, state.yaw_angle) end,
+    Spin = function(state)
+        spin_angle = spin_angle + math.rad(state.speed)
+        if spin_angle >= math.pi * 2 then spin_angle = spin_angle - math.pi * 2 end
+        return spin_angle
+    end,
+    Jitter = function(state)
+        local now = tick()
+        local interval = 1 / math.max(state.speed, 1)
+        if now - last_jitter >= interval then
+            last_jitter = now
+            jitter_angle = math.rad(StrongRandom(-state.jitter_angle, state.jitter_angle, jitter_angle))
+        end
+        return jitter_angle
+    end,
+    Backwards = function() return math.pi end,
+}
+
+local rayparams = RaycastParams.new()
+rayparams.FilterType = Enum.RaycastFilterType.Exclude
+local floor_cache_pos, floor_cache_cf, floor_cache_time = nil, nil, 0
+
+local function GetFloorBelow(pos)
+    local now = os.clock()
+    if floor_cache_cf and floor_cache_pos and (floor_cache_pos - pos).Magnitude < 3 and (now - floor_cache_time) < 0.2 then
+        return floor_cache_cf
+    end
+    local ray_origin = pos
+    local ray_dir = Vector3.new(0, -500, 0)
+    rayparams.FilterDescendantsInstances = {LP.Character}
+    local result = workspace:Raycast(ray_origin, ray_dir, rayparams)
+    local cf = nil
+    if result then cf = CFrame.new(Vector3.new(pos.X, result.Position.Y - 2, pos.Z)) end
+    floor_cache_pos = pos
+    floor_cache_cf = cf
+    floor_cache_time = now
+    return cf
+end
+
+local function GetFakeRot(vec)
+    local state = Features.antiAimSettings
+    if not state.enabled then return vec end
+    
+    local pitch_func = pitch_handlers[state.pitch]
+    local yaw_func = yaw_handlers[state.yaw]
+    if pitch_func then vec = Vector2.new(pitch_func(state), vec.Y) end
+    if yaw_func then vec = Vector2.new(vec.X, vec.Y + yaw_func(state)) end
+    return vec
+end
+
+pcall(function()
+    local orig = modules.Utility.EncodeCameraRotation
+    modules.Utility.EncodeCameraRotation = function(self, vec)
+        local fake_rot = GetFakeRot(vec)
+        local root = LP.Character and LP.Character.PrimaryPart
+        if root then
+            root.CFrame = root.CFrame * CFrame.Angles(fake_rot.X, fake_rot.Y, 0)
+        end
+        return orig(self, fake_rot)
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not Features.antiAimSettings.enabled or Features.pluggwalkEnabled or Features.voidSpamEnabled then return end
+    if not Features.antiAimSettings.underground then return end
+    
+    local root = LP.Character and LP.Character.PrimaryPart
+    if not root or not root.Parent then return end
+    
+    local pos = root.CFrame.Position
+    local floor_cf = GetFloorBelow(pos)
+    if floor_cf then root.CFrame = floor_cf end
+end)
+
+function Features.setAntiAim(on)
+    Features.antiAimEnabled = on
+    Features.antiAimSettings.enabled = on
+end
+
+print("Part 1c Loaded - Rage Bot + VoidSpam + Anti Aim")
+
+-- ═══════════════════════════════════════════════════════
+-- PART 1d - MOVEMENT + PLUGGWALK + OOB + VIEWMODEL
 -- ═══════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════
 -- MOVEMENT (Fly, Velocity, Slide Boost, Inf Double Jump)
 -- ═══════════════════════════════════════════════════════
-Features.movement = { Fly=false, FlySpeed=50, Velocity=false, VelocitySpeed=50, SlideBoost=false, SlideBoostValue=1, InfiniteDoubleJump=false }
+Features.movement = { Fly=false, FlySpeed=50, Velocity=false, VelocitySpeed=50, SlideBoost=false, SlideBoostValue=1, InfiniteDoubleJump=false, TpThrowables=false, AntiTripmine=false }
 local fly_bp, fly_bg
 
 RunService.RenderStepped:Connect(function(dt)
@@ -636,8 +955,63 @@ task.spawn(function()
     end
 end)
 
+-- Anti Tripmine
+task.spawn(function()
+    local tripmine_last_scan = 0
+    RunService.Heartbeat:Connect(function()
+        if not Features.movement.AntiTripmine then return end
+        local now = os.clock()
+        if now - tripmine_last_scan < 0.2 then return end
+        tripmine_last_scan = now
+        
+        local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            for _, s in workspace:GetChildren() do
+                if s.Name == "SubspaceTripmineHitbox" and s:FindFirstChild("Hitbox") then
+                    firetouchinterest(root, s.Hitbox, 1)
+                    firetouchinterest(root, s.Hitbox, 0)
+                end
+            end
+        end
+    end)
+end)
+
+-- TP Throwables
+task.spawn(function()
+    local orig_finish = modules.Throwable.FinishShooting
+    local throw_id = 0
+    modules.Throwable.FinishShooting = function(p9, p10)
+        if not p9.ClientFighter.IsLocalPlayer or not Features.movement.TpThrowables or not lockedTarget then
+            return orig_finish(p9, p10)
+        end
+        
+        local root = LP.Character and LP.Character.PrimaryPart
+        if not root then return orig_finish(p9, p10) end
+        
+        local args = {orig_finish(p9, p10)}
+        if args[1] ~= true then return unpack(args) end
+        
+        local prev = root.CFrame
+        local part = lockedTarget
+        
+        -- Teleport to target
+        root.CFrame = part.CFrame * CFrame.new(0, 5, 5)
+        local v68 = CFrame.new(root.Position, part.Position) * CFrame.new(0.75, -0.5, 0)
+        args[3] = modules.Utility:EncodeCFrame(v68)
+        
+        throw_id = throw_id + 1
+        local id = throw_id
+        task.delay(LP:GetNetworkPing(), function()
+            if id ~= throw_id then return end
+            root.CFrame = prev
+        end)
+        
+        return unpack(args)
+    end
+end)
+
 -- ═══════════════════════════════════════════════════════
--- PLUGGWALK (Server CF Desync Movement)
+-- PLUGGWALK
 -- ═══════════════════════════════════════════════════════
 Features.pluggwalkEnabled = false
 local pluggwalk_hb, pluggwalk_flip
@@ -663,7 +1037,7 @@ local function EnablePluggWalk()
     end)
     
     pluggwalk_hb = RunService.Heartbeat:Connect(function()
-        if not Features.pluggwalkEnabled then return end
+        if not Features.pluggwalkEnabled or Features.voidSpamEnabled then return end
         local root = LP.Character and LP.Character.PrimaryPart
         if not root or not root.Parent then return end
         local cf = root.CFrame; if not cf then return end
@@ -679,12 +1053,13 @@ local function DisablePluggWalk()
 end
 
 function Features.setPluggWalk(on)
+    if on and Features.voidSpamEnabled then return end
     Features.pluggwalkEnabled = on
     if on then EnablePluggWalk() else DisablePluggWalk() end
 end
 
 -- ═══════════════════════════════════════════════════════
--- OOB BYPASS (Out of Bounds)
+-- OOB BYPASS
 -- ═══════════════════════════════════════════════════════
 Features.oobBypassEnabled = true
 
@@ -746,14 +1121,14 @@ task.spawn(function()
     end)
 end)
 
-print("Part 1c Loaded - Movement + OOB + Viewmodel")
+print("Part 1d Loaded - Movement + PluggWalk + OOB + Viewmodel")
 
 -- ═══════════════════════════════════════════════════════
--- PART 1d - ESP + VISUALS + CAMERA
+-- PART 1e - ESP + VISUALS + CAMERA + LIGHTING + STRETCH RES
 -- ═══════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════
--- ESP (Bosco Hub)
+-- ESP
 -- ═══════════════════════════════════════════════════════
 Features.espEnabled = false
 Features.espSettings = { Box=true, BoxFilled=false, Name=true, Distance=true, TeamCheck=true }
@@ -798,7 +1173,7 @@ Players.PlayerRemoving:Connect(removeESP)
 LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
 
 -- ═══════════════════════════════════════════════════════
--- BULLET TRAILS (Aetherea)
+-- BULLET TRAILS
 -- ═══════════════════════════════════════════════════════
 Features.bulletTrailsEnabled = false
 Features.bulletTrailsColor = Color3.fromRGB(181, 126, 220)
@@ -836,7 +1211,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
--- CROSSHAIR (Aetherea Style)
+-- CROSSHAIR
 -- ═══════════════════════════════════════════════════════
 Features.crosshairEnabled = false
 Features.crosshairSettings = { Length=20, Thickness=2, Offset=5, Rotation=0, Color=Color3.fromRGB(255,255,255), OutlineColor=Color3.fromRGB(0,0,0) }
@@ -877,14 +1252,12 @@ Features.camera = { AntiFlashbang=false, AntiSmoke=false, FOV=70, Resolution=1 }
 task.spawn(function()
     task.wait(3)
     pcall(function()
-        -- Anti-Flashbang
         local orig_fb = modules.Flashbang.ReplicateFromServer
         modules.Flashbang.ReplicateFromServer = function(self, action, ...)
             if Features.camera.AntiFlashbang and action == "BlindEffect" then return end
             return orig_fb(self, action, ...)
         end
         
-        -- Anti-Smoke
         local orig_smoke = modules.SmokeClouds._ObjectAdded
         modules.SmokeClouds._ObjectAdded = function(self, obj)
             local result = orig_smoke(self, obj)
@@ -896,7 +1269,6 @@ task.spawn(function()
     end)
 end)
 
--- FOV + Resolution in RenderStepped
 RunService.RenderStepped:Connect(function()
     if Features.camera.FOV ~= 70 then
         pcall(function() modules.CameraController._base_fov = Features.camera.FOV end)
@@ -907,7 +1279,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════
--- LIGHTING / ATMOSPHERE
+-- LIGHTING
 -- ═══════════════════════════════════════════════════════
 Features.lighting = { Enabled=false, Brightness=2, Exposure=0, Ambient=Color3.fromRGB(255,255,255) }
 
@@ -938,10 +1310,10 @@ function Features.setStretchRes(on)
     end
 end
 
-print("Part 1d Loaded - ESP + Visuals + Camera")
+print("Part 1e Loaded - ESP + Visuals + Camera + Lighting + Stretch Res")
 
 -- ═══════════════════════════════════════════════════════
--- PART 1e - UNLOCKER + SKIN CHANGER + SPOOFER
+-- PART 1f - UNLOCKER + SKIN CHANGER + SPOOFER + STAFF DETECTOR
 -- ═══════════════════════════════════════════════════════
 
 -- Initialize missing features
@@ -990,7 +1362,7 @@ function Features.setUnlockWeapons(on)
 end
 
 -- ═══════════════════════════════════════════════════════
--- UNLOCK ALL + SKIN CHANGER (Aetherea Unified)
+-- UNLOCK ALL + SKIN CHANGER
 -- ═══════════════════════════════════════════════════════
 Features.unlockAllEnabled = false
 local unlockRan = false
@@ -1024,7 +1396,6 @@ local function runUnlockAll()
     if unlockRan then return end; unlockRan = true; task.wait(3)
     
     pcall(function()
-        -- Hook ownership
         local origOwnsCosmetic = modules.CosmeticLibrary.OwnsCosmetic
         modules.CosmeticLibrary.OwnsCosmetic = function(self, inventory, name, weapon)
             if name:find("MISSING_") then return origOwnsCosmetic(self, inventory, name, weapon) end
@@ -1042,7 +1413,6 @@ local function runUnlockAll()
             return skinchangerState.fake_owned[name] and isNotFinisher(name) or false
         end
         
-        -- Hook DataController
         local origGet = modules.PlayerDataController.Get
         modules.PlayerDataController.Get = function(self, key)
             local data = origGet(self, key)
@@ -1052,7 +1422,6 @@ local function runUnlockAll()
             return data
         end
         
-        -- Hook GetWeaponData
         local origGetWD = modules.PlayerDataController.GetWeaponData
         modules.PlayerDataController.GetWeaponData = function(self, weaponName)
             local data, idx = origGetWD(self, weaponName)
@@ -1067,7 +1436,6 @@ local function runUnlockAll()
             return data, idx
         end
         
-        -- Hook EquipCosmetic remote
         NamecallDispatcher:Register(function(self, method, ...)
             if method ~= "FireServer" then return false end
             local args = {...}
@@ -1088,7 +1456,6 @@ local function runUnlockAll()
             return false
         end)
         
-        -- Hook ViewModel
         task.spawn(function()
             task.wait(3)
             pcall(function()
@@ -1114,12 +1481,10 @@ local function runUnlockAll()
             end)
         end)
         
-        -- Unlock all cosmetics
         for name, cosmetic in pairs(modules.CosmeticLibrary.Cosmetics) do
             if isNotFinisher(name) then skinchangerState.fake_owned[name] = true end
         end
         
-        -- Unlock all weapons
         pcall(function()
             local ownables = modules.ShopLibrary:GetReleasedOwnableWeapons()
             local owned = {}
@@ -1135,7 +1500,7 @@ end
 function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then unlockRan = false; runUnlockAll() end end
 
 -- ═══════════════════════════════════════════════════════
--- SPOOFER (Device, Name, Badges, Leaderboard)
+-- SPOOFER
 -- ═══════════════════════════════════════════════════════
 local SetControlsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
 local deviceMap = {Desktop="MouseKeyboard", Mobile="Touch", Console="Gamepad", VR="VR"}
@@ -1149,7 +1514,6 @@ function Features.spoofDevice()
     end
 end
 
--- Badge Spoofer
 local old_index_badge
 old_index_badge = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if self == LP then
@@ -1159,7 +1523,6 @@ old_index_badge = hookmetamethod(game, "__index", newcclosure(function(self, key
     return old_index_badge(self, key)
 end))
 
--- Name Spoofer
 local spoofedNameLabels = {}
 local function applyNameSpoof(obj)
     if not obj:IsA("TextLabel") and not obj:IsA("TextButton") and not obj:IsA("TextBox") then return end
@@ -1178,7 +1541,6 @@ game.DescendantAdded:Connect(function(obj)
     end
 end)
 
--- Leaderboard Spoofer
 task.spawn(function()
     repeat task.wait(0.5) until modules.LeaderboardController
     if Features.spooferSettings.Streak > 0 then
@@ -1189,7 +1551,6 @@ task.spawn(function()
     end
 end)
 
--- Device Spoofer (Manual)
 local function spoofDevice(device)
     SetControlsRemote:FireServer("MouseKeyboard")
     task.wait(0.3)
@@ -1217,10 +1578,10 @@ function Features.setStaffDetector(on)
     end
 end
 
-print("Part 1e Loaded - Unlocker + Spoofer")
+print("Part 1f Loaded - Unlocker + Spoofer + Staff Detector")
 
 -- ═══════════════════════════════════════════════════════
--- PART 1f - KEYBINDS + CONFIG SYSTEM
+-- PART 2 - KEYBINDS + CONFIG SYSTEM
 -- ═══════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════════════════════
@@ -1231,6 +1592,8 @@ local Keybinds = {
     silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"},
     triggerbot={key=Enum.KeyCode.G,holdMode=false,label="Triggerbot"},
     flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"},
+    rageBot={key=Enum.KeyCode.E,holdMode=false,label="Rage Bot"},
+    antiAim={key=Enum.KeyCode.R,holdMode=false,label="Anti Aim"},
     fly={key=Enum.KeyCode.V,holdMode=true,label="Fly"},
     esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"},
     unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"},
@@ -1238,7 +1601,7 @@ local Keybinds = {
 local function keyName(kc) if kc == nil then return "None" end; if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
 
 -- ═══════════════════════════════════════════════════════
--- CONFIG SYSTEM
+-- CONFIG SYSTEM (ALL SETTINGS)
 -- ═══════════════════════════════════════════════════════
 local configFileName = "BoscoHub_V2_Configs.json"
 
@@ -1273,6 +1636,13 @@ local function saveConfig(name, overwrite)
         flick = Features.flickEnabled,
         flickSettings = Features.flickSettings,
         weaponMods = Features.weaponMods,
+        
+        -- Rage
+        rageBot = Features.rageBotEnabled,
+        rageBotSettings = Features.rageBotSettings,
+        voidSpam = Features.voidSpamEnabled,
+        antiAim = Features.antiAimEnabled,
+        antiAimSettings = Features.antiAimSettings,
         
         -- Movement
         movement = Features.movement,
@@ -1324,17 +1694,20 @@ local function loadConfig(name)
     -- Combat
     if data.aimbot ~= nil then Features.setAimbot(data.aimbot) end
     if data.aimbotSettings then for k, v in pairs(data.aimbotSettings) do Features.aimbotSettings[k] = v end end
-    
     if data.silentAim ~= nil then Features.setSilentAim(data.silentAim) end
     if data.silentAimSettings then for k, v in pairs(data.silentAimSettings) do Features.silentAimSettings[k] = v end end
-    
     if data.triggerbot ~= nil then Features.setTriggerbot(data.triggerbot) end
     if data.triggerbotSettings then for k, v in pairs(data.triggerbotSettings) do Features.triggerbotSettings[k] = v end end
-    
     if data.flick ~= nil then Features.setFlick(data.flick) end
     if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
-    
     if data.weaponMods then for k, v in pairs(data.weaponMods) do Features.weaponMods[k] = v end end
+    
+    -- Rage
+    if data.rageBot ~= nil then Features.setRageBot(data.rageBot) end
+    if data.rageBotSettings then for k, v in pairs(data.rageBotSettings) do Features.rageBotSettings[k] = v end end
+    if data.voidSpam ~= nil then Features.setVoidSpam(data.voidSpam) end
+    if data.antiAim ~= nil then Features.setAntiAim(data.antiAim) end
+    if data.antiAimSettings then for k, v in pairs(data.antiAimSettings) do Features.antiAimSettings[k] = v end end
     
     -- Movement
     if data.movement then for k, v in pairs(data.movement) do Features.movement[k] = v end end
@@ -1394,22 +1767,20 @@ local function deleteConfig(name)
     return true, "Deleted!"
 end
 
--- Auto-load config on join
+-- Auto-load
 task.wait(2)
 pcall(function()
     local configs = getAllConfigs()
     if configs["__autoLoadEnabled"] and configs["__autoLoad"] then
         local success, msg = loadConfig(configs["__autoLoad"])
-        if success then
-            print("Bosco Hub: Auto-loaded config: " .. configs["__autoLoad"])
-        end
+        if success then print("Bosco Hub: Auto-loaded: " .. configs["__autoLoad"]) end
     end
 end)
 
-print("Bosco Hub V2 Part 1 Complete!")
+print("Part 2 Loaded - Keybinds + Config")
 
 -- ═══════════════════════════════════════════════════════
--- PART 2 - UI (Bosco Hub V2)
+-- PART 3 - UI FRAMEWORK
 -- ═══════════════════════════════════════════════════════
 for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
 
@@ -1563,8 +1934,10 @@ local function createKeybindRow(props)
     return row
 end
 
+print("Part 3 Loaded - UI Framework")
+
 -- ═══════════════════════════════════════════════════════
--- PART 2c - COMBAT PAGES
+-- PART 4 - COMBAT UI PAGES
 -- ═══════════════════════════════════════════════════════
 
 -- AIMBOT PAGE
@@ -1585,7 +1958,6 @@ local function renderAimbot()
     createToggle({title="ADS Enabled",desc="Adjust speed when ADSing",layoutOrder=lo,default=s.ADSEnabled,onChange=function(on)s.ADSEnabled=on end});lo+=1
     createDualSlider({title="ADS Multiplier %",desc="10% = fastest | 100% = normal | 200% = slowest",layoutOrder=lo,default=s.ADSMultiplier or 80,min=10,max=200,onChange=function(v)s.ADSMultiplier=v end});lo+=1
     createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=s.AutoFire,onChange=function(on)s.AutoFire=on end});lo+=1
-    createToggle({title="Post-Shot Inertia",desc="Natural drift after shooting",layoutOrder=lo,default=s.PostKillInertia or false,onChange=function(on)s.PostKillInertia=on end});lo+=1
 end
 
 -- SILENT AIM PAGE
@@ -1633,6 +2005,35 @@ local function renderWeaponMods()
     createDualSlider({title="Firerate %",desc="100=normal 200=2x faster",layoutOrder=lo,default=s.Firerate or 100,min=50,max=300,onChange=function(v)s.Firerate=v end});lo+=1
 end
 
+-- RAGE BOT PAGE
+local function renderRageBot()
+    clearContent();local lo=1;local s=Features.rageBotSettings
+    secHead("😈 Rage Bot",lo);lo+=1
+    createToggle({title="Enable Rage Bot",desc="Ultra aggressive auto-aim + auto-shoot",layoutOrder=lo,default=Features.rageBotEnabled,onChange=function(on)Features.setRageBot(on)end});lo+=1
+    createToggle({title="VoidSpam",desc="Server desync (hard to hit)",layoutOrder=lo,default=Features.voidSpamEnabled,onChange=function(on)Features.setVoidSpam(on);if on and Features.pluggwalkEnabled then Features.setPluggWalk(false)end end});lo+=1
+    createDualSlider({title="Hide Duration",desc="Time hidden in void phase",layoutOrder=lo,default=s.hide or 0.5,min=0.1,max=2,onChange=function(v)s.hide=v end});lo+=1
+    createDualSlider({title="Attack Duration",desc="Time visible attacking",layoutOrder=lo,default=s.attack or 0.3,min=0.1,max=2,onChange=function(v)s.attack=v end});lo+=1
+    createDualSlider({title="Shoot Attempts",desc="Shots per attack phase",layoutOrder=lo,default=s.shoot_attempts or 1,min=1,max=5,onChange=function(v)s.shoot_attempts=v end});lo+=1
+    createCycleButton({title="Attack Mode",desc="Weapon type to use",layoutOrder=lo,default=s.attack_mode or "Gun",options={"Gun","Knife","Melee"},onChange=function(v)s.attack_mode=v end});lo+=1
+    createCycleButton({title="Preferred Weapon",desc="Primary or Secondary",layoutOrder=lo,default=s.preferred or "Primary",options={"Primary","Secondary"},onChange=function(v)s.preferred=v end});lo+=1
+    createToggle({title="Rage HUD",desc="Show rage status on screen",layoutOrder=lo,default=s.rage_hud or true,onChange=function(on)s.rage_hud=on end});lo+=1
+    createToggle({title="Hit Notifications",desc="Show damage dealt",layoutOrder=lo,default=s.hit_notifications or true,onChange=function(on)s.hit_notifications=on end});lo+=1
+end
+
+-- ANTI AIM PAGE
+local function renderAntiAim()
+    clearContent();local lo=1;local s=Features.antiAimSettings
+    secHead("🎯 Anti Aim",lo);lo+=1
+    createToggle({title="Enable Anti Aim",desc="Manipulate your hitbox angles",layoutOrder=lo,default=Features.antiAimEnabled,onChange=function(on)Features.setAntiAim(on)end});lo+=1
+    createCycleButton({title="Pitch Mode",desc="Vertical angle manipulation",layoutOrder=lo,default=s.pitch or "None",options={"None","Offset","Custom","Random","Look Up","Look Down"},onChange=function(v)s.pitch=v end});lo+=1
+    createDualSlider({title="Pitch Angle",desc="Custom pitch angle",layoutOrder=lo,default=s.pitch_angle or 0,min=-89,max=89,onChange=function(v)s.pitch_angle=v end});lo+=1
+    createCycleButton({title="Yaw Mode",desc="Horizontal angle manipulation",layoutOrder=lo,default=s.yaw or "None",options={"None","Offset","Custom","Random","Spin","Jitter","Backwards"},onChange=function(v)s.yaw=v end});lo+=1
+    createDualSlider({title="Yaw Angle",desc="Custom yaw angle",layoutOrder=lo,default=s.yaw_angle or 0,min=-180,max=180,onChange=function(v)s.yaw_angle=v end});lo+=1
+    createDualSlider({title="Speed",desc="Spin/Jitter speed",layoutOrder=lo,default=s.speed or 10,min=1,max=50,onChange=function(v)s.speed=v end});lo+=1
+    createDualSlider({title="Jitter Angle",desc="Max jitter deviation",layoutOrder=lo,default=s.jitter_angle or 90,min=10,max=180,onChange=function(v)s.jitter_angle=v end});lo+=1
+    createToggle({title="Underground",desc="Push character underground",layoutOrder=lo,default=s.underground or false,onChange=function(on)s.underground=on end});lo+=1
+end
+
 -- Add Combat navigation
 mkNavHdr("🎯 COMBAT",1)
 mkNav("Aimbot",2,renderAimbot)
@@ -1640,9 +2041,15 @@ mkNav("Silent Aim",3,renderSilentAim)
 mkNav("Flick",4,renderFlick)
 mkNav("Triggerbot",5,renderTriggerbot)
 mkNav("Weapon Mods",6,renderWeaponMods)
+mkSep(sbScroll,7)
+mkNavHdr("😈 RAGE",8)
+mkNav("Rage Bot",9,renderRageBot)
+mkNav("Anti Aim",10,renderAntiAim)
+
+print("Part 4 Loaded - Combat UI Pages")
 
 -- ═══════════════════════════════════════════════════════
--- PART 2d - MOVEMENT + PROTECTION PAGES
+-- PART 5 - MOVEMENT + VIEWMODEL + PROTECTION UI PAGES
 -- ═══════════════════════════════════════════════════════
 
 -- FLY PAGE
@@ -1676,18 +2083,25 @@ local function renderInfDoubleJump()
     createToggle({title="Enable Inf Double Jump",desc="Jump infinitely in the air",layoutOrder=lo,default=s.InfiniteDoubleJump,onChange=function(on)s.InfiniteDoubleJump=on end});lo+=1
 end
 
+-- TP THROWABLES PAGE
+local function renderTpThrowables()
+    clearContent();local lo=1;local s=Features.movement
+    secHead("🎯 TP Throwables",lo);lo+=1
+    createToggle({title="Enable TP Throwables",desc="Teleport to target when throwing grenades",layoutOrder=lo,default=s.TpThrowables or false,onChange=function(on)s.TpThrowables=on end});lo+=1
+end
+
+-- ANTI TRIPMINE PAGE
+local function renderAntiTripmine()
+    clearContent();local lo=1;local s=Features.movement
+    secHead("💣 Anti Tripmine",lo);lo+=1
+    createToggle({title="Enable Anti Tripmine",desc="Auto-destroy subspace tripmines",layoutOrder=lo,default=s.AntiTripmine or false,onChange=function(on)s.AntiTripmine=on end});lo+=1
+end
+
 -- PLUGGWALK PAGE
 local function renderPluggWalk()
     clearContent();local lo=1
     secHead("👻 PluggWalk",lo);lo+=1
     createToggle({title="Enable PluggWalk",desc="Server CF desync movement (hard to hit)",layoutOrder=lo,default=Features.pluggwalkEnabled,onChange=function(on)Features.setPluggWalk(on)end});lo+=1
-end
-
--- OOB BYPASS PAGE
-local function renderOOBBypass()
-    clearContent();local lo=1
-    secHead("🌐 OOB Bypass",lo);lo+=1
-    createToggle({title="Enable OOB Bypass",desc="Prevents out-of-bounds death",layoutOrder=lo,default=Features.oobBypassEnabled,onChange=function(on)Features.oobBypassEnabled=on end});lo+=1
 end
 
 -- VIEWMODEL PAGE
@@ -1710,6 +2124,13 @@ local function renderViewmodel()
     end
 end
 
+-- OOB BYPASS PAGE
+local function renderOOBBypass()
+    clearContent();local lo=1
+    secHead("🌐 OOB Bypass",lo);lo+=1
+    createToggle({title="Enable OOB Bypass",desc="Prevents out-of-bounds death",layoutOrder=lo,default=Features.oobBypassEnabled,onChange=function(on)Features.oobBypassEnabled=on end});lo+=1
+end
+
 -- STAFF DETECTOR PAGE
 local function renderStaffDetector()
     clearContent();local lo=1
@@ -1718,25 +2139,28 @@ local function renderStaffDetector()
     createToggle({title="Auto Leave",desc="Instantly leave if mod detected",layoutOrder=lo,default=_G.autoleave or false,onChange=function(on)_G.autoleave=on end});lo+=1
 end
 
--- Add Movement + Protection navigation
-mkSep(sbScroll,5)
-mkNavHdr("🏃 MOVEMENT",6)
-mkNav("Fly",7,renderFly)
-mkNav("Velocity",8,renderVelocity)
-mkNav("Slide Boost",9,renderSlideBoost)
-mkNav("Inf Double Jump",10,renderInfDoubleJump)
-mkNav("PluggWalk",11,renderPluggWalk)
-mkSep(sbScroll,12)
-mkNavHdr("🔧 VIEWMODEL",13)
-mkNav("Viewmodel",14,renderViewmodel)
-mkSep(sbScroll,15)
-mkNavHdr("🛡 PROTECTION",16)
-mkNav("OOB Bypass",17,renderOOBBypass)
-mkNav("Staff Detector",18,renderStaffDetector)
-mkSep(sbScroll,19)
+-- Add Movement + Viewmodel + Protection navigation
+mkSep(sbScroll,11)
+mkNavHdr("🏃 MOVEMENT",12)
+mkNav("Fly",13,renderFly)
+mkNav("Velocity",14,renderVelocity)
+mkNav("Slide Boost",15,renderSlideBoost)
+mkNav("Inf Double Jump",16,renderInfDoubleJump)
+mkNav("TP Throwables",17,renderTpThrowables)
+mkNav("Anti Tripmine",18,renderAntiTripmine)
+mkNav("PluggWalk",19,renderPluggWalk)
+mkSep(sbScroll,20)
+mkNavHdr("🔧 VIEWMODEL",21)
+mkNav("Viewmodel",22,renderViewmodel)
+mkSep(sbScroll,23)
+mkNavHdr("🛡 PROTECTION",24)
+mkNav("OOB Bypass",25,renderOOBBypass)
+mkNav("Staff Detector",26,renderStaffDetector)
+
+print("Part 5 Loaded - Movement + Viewmodel + Protection UI Pages")
 
 -- ═══════════════════════════════════════════════════════
--- PART 2e - VISUALS + CAMERA + ENVIRONMENT PAGES
+-- PART 6 - VISUALS + CAMERA + ENVIRONMENT UI PAGES
 -- ═══════════════════════════════════════════════════════
 
 -- ESP PAGE
@@ -1820,21 +2244,23 @@ local function renderStretchRes()
 end
 
 -- Add Visuals + Camera + Environment navigation
-mkSep(sbScroll,20)
-mkNavHdr("👁 VISUALS",21)
-mkNav("ESP",22,renderESP)
-mkNav("Bullet Trails",23,renderBulletTrails)
-mkNav("Crosshair",24,renderCrosshair)
-mkSep(sbScroll,25)
-mkNavHdr("📷 CAMERA",26)
-mkNav("Camera",27,renderCamera)
-mkSep(sbScroll,28)
-mkNavHdr("💡 ENVIRONMENT",29)
-mkNav("Lighting",30,renderLighting)
-mkNav("Stretch Res",31,renderStretchRes)
+mkSep(sbScroll,27)
+mkNavHdr("👁 VISUALS",28)
+mkNav("ESP",29,renderESP)
+mkNav("Bullet Trails",30,renderBulletTrails)
+mkNav("Crosshair",31,renderCrosshair)
+mkSep(sbScroll,32)
+mkNavHdr("📷 CAMERA",33)
+mkNav("Camera",34,renderCamera)
+mkSep(sbScroll,35)
+mkNavHdr("💡 ENVIRONMENT",36)
+mkNav("Lighting",37,renderLighting)
+mkNav("Stretch Res",38,renderStretchRes)
+
+print("Part 6 Loaded - Visuals + Camera + Environment UI Pages")
 
 -- ═══════════════════════════════════════════════════════
--- PART 2f - UNLOCKER + SPOOFER + CONFIG PAGES
+-- PART 7 - UNLOCKER + SPOOFER + CONFIG + KEYBINDS (FINAL)
 -- ═══════════════════════════════════════════════════════
 
 -- UNLOCK ALL PAGE
@@ -2156,16 +2582,16 @@ local function renderKeybinds()
 end
 
 -- Add Unlocker + Spoofer + Config + Keybinds navigation
-mkSep(sbScroll,32)
-mkNavHdr("🎨 COSMETIC",33)
-mkNav("Unlock All",34,renderUnlockAll)
-mkSep(sbScroll,35)
-mkNavHdr("🎭 SPOOFER",36)
-mkNav("Spoofer",37,renderSpoofer)
-mkSep(sbScroll,38)
-mkNavHdr("⚙ SETTINGS",39)
-mkNav("Config",40,renderConfig)
-mkNav("Keybinds",41,renderKeybinds)
+mkSep(sbScroll,39)
+mkNavHdr("🎨 COSMETIC",40)
+mkNav("Unlock All",41,renderUnlockAll)
+mkSep(sbScroll,42)
+mkNavHdr("🎭 SPOOFER",43)
+mkNav("Spoofer",44,renderSpoofer)
+mkSep(sbScroll,45)
+mkNavHdr("⚙ SETTINGS",46)
+mkNav("Config",47,renderConfig)
+mkNav("Keybinds",48,renderKeybinds)
 
 -- Window controls
 winClose.MouseButton1Click:Connect(function()root.Visible=false end)
@@ -2178,9 +2604,45 @@ UIS.InputBegan:Connect(function(input)
     end
 end)
 
+-- Keybind handler
+UIS.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if listeningFor then
+        local bind=Keybinds[listeningFor]
+        if bind then
+            bind.key=input.KeyCode
+            if kbBtns[listeningFor] then
+                kbBtns[listeningFor].Text=keyName(input.KeyCode)
+                kbBtns[listeningFor].BackgroundColor3=Color3.fromRGB(22,4,35)
+            end
+        end
+        listeningFor=nil
+        return
+    end
+    
+    for id, bind in pairs(Keybinds) do
+        if input.KeyCode==bind.key then
+            if bind.holdMode then
+                if id=="fly" then Features.movement.Fly=not Features.movement.Fly
+                end
+            else
+                if id=="aimbot" then Features.setAimbot(not Features.aimbotEnabled)
+                elseif id=="silentAim" then Features.setSilentAim(not Features.silentAimEnabled)
+                elseif id=="triggerbot" then Features.setTriggerbot(not Features.triggerbotEnabled)
+                elseif id=="flick" then Features.setFlick(not Features.flickEnabled)
+                elseif id=="rageBot" then Features.setRageBot(not Features.rageBotEnabled)
+                elseif id=="antiAim" then Features.setAntiAim(not Features.antiAimEnabled)
+                elseif id=="esp" then Features.setESP(not Features.espEnabled)
+                elseif id=="unlockAll" then Features.setUnlockAll(not Features.unlockAllEnabled)
+                end
+            end
+        end
+    end
+end)
+
 -- Default to Aimbot page
 setNavActive(navBtns["Aimbot"])
 renderAimbot()
 
-print("Bosco Hub V2 UI Loaded!")
-showToast("Bosco Hub v2 release loaded!")
+showToast("Bosco Hub v2 loaded!")
+print("Bosco Hub V2 Complete!")
