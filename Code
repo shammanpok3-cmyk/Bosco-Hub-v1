@@ -1691,16 +1691,80 @@ local function loadConfig(name)
     local data = configs[name]
     if not data then return false, "Not found!" end
     
+    -- Safe loader helper
+    local function safeSet(func, ...)
+        if func and type(func) == "function" then
+            pcall(func, ...)
+        end
+    end
+    
     -- Combat
-    if data.aimbot ~= nil then Features.setAimbot(data.aimbot) end
+    if data.aimbot ~= nil then safeSet(Features.setAimbot, data.aimbot) end
     if data.aimbotSettings then for k, v in pairs(data.aimbotSettings) do Features.aimbotSettings[k] = v end end
-    if data.silentAim ~= nil then Features.setSilentAim(data.silentAim) end
+    if data.silentAim ~= nil then safeSet(Features.setSilentAim, data.silentAim) end
     if data.silentAimSettings then for k, v in pairs(data.silentAimSettings) do Features.silentAimSettings[k] = v end end
-    if data.triggerbot ~= nil then Features.setTriggerbot(data.triggerbot) end
+    if data.triggerbot ~= nil then safeSet(Features.setTriggerbot, data.triggerbot) end
     if data.triggerbotSettings then for k, v in pairs(data.triggerbotSettings) do Features.triggerbotSettings[k] = v end end
-    if data.flick ~= nil then Features.setFlick(data.flick) end
+    if data.flick ~= nil then safeSet(Features.setFlick, data.flick) end
     if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
     if data.weaponMods then for k, v in pairs(data.weaponMods) do Features.weaponMods[k] = v end end
+    
+    -- Rage
+    if data.rageBot ~= nil then safeSet(Features.setRageBot, data.rageBot) end
+    if data.rageBotSettings then for k, v in pairs(data.rageBotSettings) do Features.rageBotSettings[k] = v end end
+    if data.voidSpam ~= nil then safeSet(Features.setVoidSpam, data.voidSpam) end
+    if data.antiAim ~= nil then safeSet(Features.setAntiAim, data.antiAim) end
+    if data.antiAimSettings then for k, v in pairs(data.antiAimSettings) do Features.antiAimSettings[k] = v end end
+    
+    -- Movement
+    if data.movement then for k, v in pairs(data.movement) do Features.movement[k] = v end end
+    if data.pluggwalk ~= nil then safeSet(Features.setPluggWalk, data.pluggwalk) end
+    
+    -- Protection
+    if data.oobBypass ~= nil then Features.oobBypassEnabled = data.oobBypass end
+    if data.staffDetector ~= nil then safeSet(Features.setStaffDetector, data.staffDetector) end
+    
+    -- Viewmodel
+    if data.viewmodel then for k, v in pairs(data.viewmodel) do Features.viewmodel[k] = v end end
+    
+    -- Visuals
+    if data.esp ~= nil then safeSet(Features.setESP, data.esp) end
+    if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v; pcall(function() Features.setESPSetting(k, v) end) end end
+    if data.bulletTrails ~= nil then Features.bulletTrailsEnabled = data.bulletTrails end
+    if data.bulletTrailsColor then Features.bulletTrailsColor = data.bulletTrailsColor end
+    if data.crosshair ~= nil then Features.crosshairEnabled = data.crosshair end
+    if data.crosshairSettings then for k, v in pairs(data.crosshairSettings) do Features.crosshairSettings[k] = v end end
+    
+    -- Camera
+    if data.camera then for k, v in pairs(data.camera) do Features.camera[k] = v end end
+    
+    -- Environment
+    if data.lighting then for k, v in pairs(data.lighting) do Features.lighting[k] = v end end
+    if data.stretchRes ~= nil then safeSet(Features.setStretchRes, data.stretchRes) end
+    if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
+    
+    -- Unlocker
+    if data.unlockAll ~= nil then safeSet(Features.setUnlockAll, data.unlockAll) end
+    if data.skinChanger ~= nil then safeSet(Features.setSkinChanger, data.skinChanger) end
+    
+    -- Spoofer
+    if data.spoofer ~= nil then safeSet(Features.setSpoofer, data.spoofer) end
+    if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
+    
+    -- Keybinds
+    if data.keybinds then 
+        for k, v in pairs(data.keybinds) do 
+            if Keybinds[k] then 
+                pcall(function()
+                    Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key
+                    Keybinds[k].holdMode = v.holdMode 
+                end)
+            end 
+        end 
+    end
+    
+    return true, "Loaded!"
+end
     
     -- Rage
     if data.rageBot ~= nil then Features.setRageBot(data.rageBot) end
