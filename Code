@@ -1718,131 +1718,160 @@ local function loadConfig(name)
 end
     
     -- Combat
-    if data.aimbot ~= nil then safeSet(Features.setAimbot, data.aimbot) end
-    if data.aimbotSettings then for k, v in pairs(data.aimbotSettings) do Features.aimbotSettings[k] = v end end
-    if data.silentAim ~= nil then safeSet(Features.setSilentAim, data.silentAim) end
-    if data.silentAimSettings then for k, v in pairs(data.silentAimSettings) do Features.silentAimSettings[k] = v end end
-    if data.triggerbot ~= nil then safeSet(Features.setTriggerbot, data.triggerbot) end
-    if data.triggerbotSettings then for k, v in pairs(data.triggerbotSettings) do Features.triggerbotSettings[k] = v end end
-    if data.flick ~= nil then safeSet(Features.setFlick, data.flick) end
-    if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
-    if data.weaponMods then for k, v in pairs(data.weaponMods) do Features.weaponMods[k] = v end end
-    
-    -- Rage
-    if data.rageBot ~= nil then safeSet(Features.setRageBot, data.rageBot) end
-    if data.rageBotSettings then for k, v in pairs(data.rageBotSettings) do Features.rageBotSettings[k] = v end end
-    if data.voidSpam ~= nil then safeSet(Features.setVoidSpam, data.voidSpam) end
-    if data.antiAim ~= nil then safeSet(Features.setAntiAim, data.antiAim) end
-    if data.antiAimSettings then for k, v in pairs(data.antiAimSettings) do Features.antiAimSettings[k] = v end end
-    
-    -- Movement
-    if data.movement then for k, v in pairs(data.movement) do Features.movement[k] = v end end
-    if data.pluggwalk ~= nil then safeSet(Features.setPluggWalk, data.pluggwalk) end
-    
-    -- Protection
-    if data.oobBypass ~= nil then Features.oobBypassEnabled = data.oobBypass end
-    if data.staffDetector ~= nil then safeSet(Features.setStaffDetector, data.staffDetector) end
-    
-    -- Viewmodel
-    if data.viewmodel then for k, v in pairs(data.viewmodel) do Features.viewmodel[k] = v end end
-    
-    -- Visuals
-    if data.esp ~= nil then safeSet(Features.setESP, data.esp) end
-    if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v; pcall(function() Features.setESPSetting(k, v) end) end end
-    if data.bulletTrails ~= nil then Features.bulletTrailsEnabled = data.bulletTrails end
-    if data.bulletTrailsColor then Features.bulletTrailsColor = data.bulletTrailsColor end
-    if data.crosshair ~= nil then Features.crosshairEnabled = data.crosshair end
-    if data.crosshairSettings then for k, v in pairs(data.crosshairSettings) do Features.crosshairSettings[k] = v end end
-    
-    -- Camera
-    if data.camera then for k, v in pairs(data.camera) do Features.camera[k] = v end end
-    
-    -- Environment
-    if data.lighting then for k, v in pairs(data.lighting) do Features.lighting[k] = v end end
-    if data.stretchRes ~= nil then safeSet(Features.setStretchRes, data.stretchRes) end
-    if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
-    
-    -- Unlocker
-    if data.unlockAll ~= nil then safeSet(Features.setUnlockAll, data.unlockAll) end
-    if data.skinChanger ~= nil then safeSet(Features.setSkinChanger, data.skinChanger) end
-    
-    -- Spoofer
-    if data.spoofer ~= nil then safeSet(Features.setSpoofer, data.spoofer) end
-    if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
-    
-    -- Keybinds
-    if data.keybinds then 
-        for k, v in pairs(data.keybinds) do 
-            if Keybinds[k] then 
-                pcall(function()
-                    Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key
-                    Keybinds[k].holdMode = v.holdMode 
-                end)
-            end 
-        end 
+-- ═══════════════════════════════════════════════════════
+-- CONFIG SYSTEM (Delta Compatible - Full)
+-- ═══════════════════════════════════════════════════════
+local configFileName = "BoscoHub_V2_Configs.json"
+
+-- Clear corrupted config on start
+pcall(function()
+    writefile(configFileName, "{}")
+end)
+
+local function getAllConfigs()
+    local success, data = pcall(function() 
+        return HttpService:JSONDecode(readfile(configFileName)) 
+    end)
+    if success and type(data) == "table" then
+        return data
     end
-    
-    return true, "Loaded!"
+    return {}
 end
+
+local function saveConfigsToFile(configs)
+    pcall(function() 
+        writefile(configFileName, HttpService:JSONEncode(configs)) 
+    end)
+end
+
+local function saveConfig(name, overwrite)
+    if not name or name == "" then return false, "Enter a name!" end
+    local configs = getAllConfigs()
+    if configs[name] and not overwrite then return false, "Config exists!" end
+    
+    local keybindsCopy = {}
+    for k, v in pairs(Keybinds) do
+        pcall(function() keybindsCopy[k] = {key=v.key.Name, holdMode=v.holdMode, label=v.label} end)
+    end
+    
+    configs[name] = {
+        aimbot = Features.aimbotEnabled,
+        aimbotSettings = Features.aimbotSettings,
+        silentAim = Features.silentAimEnabled,
+        silentAimSettings = Features.silentAimSettings,
+        triggerbot = Features.triggerbotEnabled,
+        triggerbotSettings = Features.triggerbotSettings,
+        flick = Features.flickEnabled,
+        flickSettings = Features.flickSettings,
+        weaponMods = Features.weaponMods,
+        rageBot = Features.rageBotEnabled,
+        rageBotSettings = Features.rageBotSettings,
+        voidSpam = Features.voidSpamEnabled,
+        antiAim = Features.antiAimEnabled,
+        antiAimSettings = Features.antiAimSettings,
+        movement = Features.movement,
+        pluggwalk = Features.pluggwalkEnabled,
+        oobBypass = Features.oobBypassEnabled,
+        staffDetector = Features.staffDetectorEnabled,
+        viewmodel = Features.viewmodel,
+        esp = Features.espEnabled,
+        espSettings = Features.espSettings,
+        bulletTrails = Features.bulletTrailsEnabled,
+        bulletTrailsColor = Features.bulletTrailsColor,
+        crosshair = Features.crosshairEnabled,
+        crosshairSettings = Features.crosshairSettings,
+        camera = Features.camera,
+        lighting = Features.lighting,
+        stretchRes = Features.stretchResEnabled,
+        stretchResValue = Features.stretchResValue,
+        unlockAll = Features.unlockAllEnabled,
+        skinChanger = Features.skinChangerEnabled,
+        spoofer = Features.spooferEnabled,
+        spooferSettings = Features.spooferSettings,
+        keybinds = keybindsCopy
+    }
+    saveConfigsToFile(configs)
+    return true, "Saved!"
+end
+
+local function loadConfig(name)
+    if not name or name == "" then return false, "No config name" end
+    local configs = getAllConfigs()
+    if type(configs) ~= "table" then return false, "Cannot read configs" end
+    local data = configs[name]
+    if not data or type(data) ~= "table" then return false, "Not found!" end
+    
+    -- Combat
+    pcall(function() if data.aimbot ~= nil then Features.setAimbot(data.aimbot) end end)
+    pcall(function() if data.aimbotSettings then for k, v in pairs(data.aimbotSettings) do Features.aimbotSettings[k] = v end end end)
+    pcall(function() if data.silentAim ~= nil then Features.setSilentAim(data.silentAim) end end)
+    pcall(function() if data.silentAimSettings then for k, v in pairs(data.silentAimSettings) do Features.silentAimSettings[k] = v end end end)
+    pcall(function() if data.triggerbot ~= nil then Features.setTriggerbot(data.triggerbot) end end)
+    pcall(function() if data.triggerbotSettings then for k, v in pairs(data.triggerbotSettings) do Features.triggerbotSettings[k] = v end end end)
+    pcall(function() if data.flick ~= nil then Features.setFlick(data.flick) end end)
+    pcall(function() if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end end)
+    pcall(function() if data.weaponMods then for k, v in pairs(data.weaponMods) do Features.weaponMods[k] = v end end end)
     
     -- Rage
-    if data.rageBot ~= nil then Features.setRageBot(data.rageBot) end
-    if data.rageBotSettings then for k, v in pairs(data.rageBotSettings) do Features.rageBotSettings[k] = v end end
-    if data.voidSpam ~= nil then Features.setVoidSpam(data.voidSpam) end
-    if data.antiAim ~= nil then Features.setAntiAim(data.antiAim) end
-    if data.antiAimSettings then for k, v in pairs(data.antiAimSettings) do Features.antiAimSettings[k] = v end end
+    pcall(function() if data.rageBot ~= nil then Features.setRageBot(data.rageBot) end end)
+    pcall(function() if data.rageBotSettings then for k, v in pairs(data.rageBotSettings) do Features.rageBotSettings[k] = v end end end)
+    pcall(function() if data.voidSpam ~= nil then Features.setVoidSpam(data.voidSpam) end end)
+    pcall(function() if data.antiAim ~= nil then Features.setAntiAim(data.antiAim) end end)
+    pcall(function() if data.antiAimSettings then for k, v in pairs(data.antiAimSettings) do Features.antiAimSettings[k] = v end end end)
     
     -- Movement
-    if data.movement then for k, v in pairs(data.movement) do Features.movement[k] = v end end
-    if data.pluggwalk ~= nil then Features.setPluggWalk(data.pluggwalk) end
+    pcall(function() if data.movement then for k, v in pairs(data.movement) do Features.movement[k] = v end end end)
+    pcall(function() if data.pluggwalk ~= nil then Features.setPluggWalk(data.pluggwalk) end end)
     
     -- Protection
-    if data.oobBypass ~= nil then Features.oobBypassEnabled = data.oobBypass end
-    if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end
+    pcall(function() if data.oobBypass ~= nil then Features.oobBypassEnabled = data.oobBypass end end)
+    pcall(function() if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end end)
     
     -- Viewmodel
-    if data.viewmodel then for k, v in pairs(data.viewmodel) do Features.viewmodel[k] = v end end
+    pcall(function() if data.viewmodel then for k, v in pairs(data.viewmodel) do Features.viewmodel[k] = v end end end)
     
     -- Visuals
-    if data.esp ~= nil then Features.setESP(data.esp) end
-    if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v; Features.setESPSetting(k, v) end end
-    if data.bulletTrails ~= nil then Features.bulletTrailsEnabled = data.bulletTrails end
-    if data.bulletTrailsColor then Features.bulletTrailsColor = data.bulletTrailsColor end
-    if data.crosshair ~= nil then Features.crosshairEnabled = data.crosshair end
-    if data.crosshairSettings then for k, v in pairs(data.crosshairSettings) do Features.crosshairSettings[k] = v end end
+    pcall(function() if data.esp ~= nil then Features.setESP(data.esp) end end)
+    pcall(function() if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v end end end)
+    pcall(function() if data.bulletTrails ~= nil then Features.bulletTrailsEnabled = data.bulletTrails end end)
+    pcall(function() if data.bulletTrailsColor then Features.bulletTrailsColor = data.bulletTrailsColor end end)
+    pcall(function() if data.crosshair ~= nil then Features.crosshairEnabled = data.crosshair end end)
+    pcall(function() if data.crosshairSettings then for k, v in pairs(data.crosshairSettings) do Features.crosshairSettings[k] = v end end end)
     
     -- Camera
-    if data.camera then for k, v in pairs(data.camera) do Features.camera[k] = v end end
+    pcall(function() if data.camera then for k, v in pairs(data.camera) do Features.camera[k] = v end end end)
     
     -- Environment
-    if data.lighting then for k, v in pairs(data.lighting) do Features.lighting[k] = v end end
-    if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end
-    if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
+    pcall(function() if data.lighting then for k, v in pairs(data.lighting) do Features.lighting[k] = v end end end)
+    pcall(function() if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end end)
+    pcall(function() if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end end)
     
     -- Unlocker
-    if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end
-    if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end
+    pcall(function() if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end end)
+    pcall(function() if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end end)
     
     -- Spoofer
-    if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end
-    if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
+    pcall(function() if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end end)
+    pcall(function() if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end end)
     
     -- Keybinds
-    if data.keybinds then 
-        for k, v in pairs(data.keybinds) do 
-            if Keybinds[k] then 
-                pcall(function()
-                    Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key
-                    Keybinds[k].holdMode = v.holdMode 
-                end)
+    pcall(function()
+        if data.keybinds then 
+            for k, v in pairs(data.keybinds) do 
+                if Keybinds[k] and v and v.key then 
+                    local keyCode = Enum.KeyCode[v.key]
+                    if keyCode then Keybinds[k].key = keyCode end
+                    if v.holdMode ~= nil then Keybinds[k].holdMode = v.holdMode end
+                end 
             end 
-        end 
-    end
+        end
+    end)
     
     return true, "Loaded!"
 end
 
 local function deleteConfig(name)
+    if not name or name == "" then return false, "Enter a name!" end
     local configs = getAllConfigs()
     if not configs[name] then return false, "Not found!" end
     configs[name] = nil
@@ -1851,12 +1880,11 @@ local function deleteConfig(name)
 end
 
 -- Auto-load
-task.wait(2)
+task.wait(8)
 pcall(function()
     local configs = getAllConfigs()
-    if configs["__autoLoadEnabled"] and configs["__autoLoad"] then
-        local success, msg = loadConfig(configs["__autoLoad"])
-        if success then print("Bosco Hub: Auto-loaded: " .. configs["__autoLoad"]) end
+    if configs["__autoLoadEnabled"] and configs["__autoLoad"] and configs["__autoLoad"] ~= "" then
+        loadConfig(configs["__autoLoad"])
     end
 end)
 
