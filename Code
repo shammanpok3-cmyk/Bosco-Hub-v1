@@ -1714,61 +1714,11 @@ local function loadConfig(name)
     
     -- Visuals
     pcall(function() if data.esp ~= nil then Features.setESP(data.esp) end end)
-    pcall(function() if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v end end end)
-    pcall(function() if data.bulletTrails ~= nil then Features.bulletTrailsEnabled = data.bulletTrails end end)
-    pcall(function() if data.bulletTrailsColor then Features.bulletTrailsColor = data.bulletTrailsColor end end)
-    pcall(function() if data.crosshair ~= nil then Features.crosshairEnabled = data.crosshair end end)
-    pcall(function() if data.crosshairSettings then for k, v in pairs(data.crosshairSettings) do Features.crosshairSettings[k] = v end end end)
-    
-    -- Camera
-    pcall(function() if data.camera then for k, v in pairs(data.camera) do Features.camera[k] = v end end end)
-    
-    -- Environment
-    pcall(function() if data.lighting then for k, v in pairs(data.lighting) do Features.lighting[k] = v end end end)
-    pcall(function() if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end end)
-    pcall(function() if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end end)
-    
-    -- Unlocker
-    pcall(function() if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end end)
-    pcall(function() if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end end)
-    
-    -- Spoofer
-    pcall(function() if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end end)
-    pcall(function() if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end end)
-    
-    -- Keybinds
-    pcall(function()
-        if data.keybinds then 
-            for k, v in pairs(data.keybinds) do 
-                if Keybinds[k] and v and v.key then 
-                    local keyCode = Enum.KeyCode[v.key]
-                    if keyCode then Keybinds[k].key = keyCode end
-                    if v.holdMode ~= nil then Keybinds[k].holdMode = v.holdMode end
-                end 
-            end 
-        end
-    end)
-    
-    return true, "Loaded!"
-end
-
-local function deleteConfig(name)
-    if not name or name == "" then return false, "Enter a name!" end
-    local configs = getAllConfigs()
-    if not configs[name] then return false, "Not found!" end
-    configs[name] = nil
-    saveConfigsToFile(configs)
-    return true, "Deleted!"
-end
-
--- Auto-load
-task.wait(8)
-pcall(function()
-    local configs = getAllConfigs()
-    if configs["__autoLoadEnabled"] and configs["__autoLoad"] and configs["__autoLoad"] ~= "" then
-        loadConfig(configs["__autoLoad"])
-    end
-end)
+-- Config System (Disabled - not supported on Delta)
+local function saveConfig() return false, "Not supported" end
+local function loadConfig() return false, "Not supported" end
+local function deleteConfig() return false, "Not supported" end
+local function getAllConfigs() return {} end
 
 print("Part 2 Loaded - Keybinds + Config")
 
