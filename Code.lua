@@ -560,7 +560,7 @@ pcall(function()
     if queue_on_teleport then
         local saved = getAllConfigs()
         if saved["__autoLoadEnabled"] then
-            queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code"))()]])
+            queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code.lua"))()]])
         end
     end
 end)
