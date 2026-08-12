@@ -1,4 +1,4 @@
-if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game:IsLoaded()
 
 --[[
     Bosco Hub V1 — LocalScript (PC)
