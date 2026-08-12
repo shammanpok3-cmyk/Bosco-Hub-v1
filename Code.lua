@@ -456,21 +456,14 @@ function Features.reloadSpoofer()
     spooferReloading = true; Features.setSpoofer(false); task.wait(0.5); Features.setSpoofer(true); task.wait(0.5); spooferReloading = false
 end
 
--- DEVICE SPOOFER (task.spawn fixed)
-local SetControlsRemote = nil
-pcall(function()
-    SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
-end)
+-- DEVICE SPOOFER
+local SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
 local function spoofDevice(device)
-    task.spawn(function()
-        if not SetControlsRemote then return end
-        SetControlsRemote:FireServer("MouseKeyboard")
-        task.wait(0.3)
-        SetControlsRemote:FireServer(device)
-    end)
+    SetControlsRemote:FireServer("MouseKeyboard")
+    task.wait(0.3)
+    SetControlsRemote:FireServer(device)
 end
 local autoSpoofDevice = nil
-
 -- STRETCH RES
 Features.stretchResEnabled = false
 Features.stretchResValue = 0.81
