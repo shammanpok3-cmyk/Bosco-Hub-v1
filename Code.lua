@@ -459,11 +459,13 @@ end
 -- DEVICE SPOOFER
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SetControlsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
+
 local function spoofDevice(wantedDevice)
     SetControlsRemote:FireServer("MouseKeyboard")
     task.wait(0.3)
     SetControlsRemote:FireServer(wantedDevice)
 end
+
 local autoSpoofDevice = nil
 
 -- STRETCH RES
