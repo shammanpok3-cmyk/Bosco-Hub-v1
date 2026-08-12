@@ -405,7 +405,7 @@ local function doFlick()
 end
 RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
 
--- UNLOCK ALL (External - No Conflicts)
+-- UNLOCK ALL (External)
 Features.unlockAllEnabled = false
 Features.skinChangerEnabled = false
 local unlockRan = false
@@ -413,7 +413,7 @@ local unlockRan = false
 local function runUnlockAll()
     if unlockRan then return end; unlockRan = true; task.wait(3)
     pcall(function()
-        loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/fa6e61463a15bca622ef55072d2c035f14f6165e/gistfile1.txt"))()
+        loadstring(game:HttpGet("YOUR_GIST_RAW_URL_HERE"))()
     end)
 end
 
@@ -456,9 +456,19 @@ function Features.reloadSpoofer()
     spooferReloading = true; Features.setSpoofer(false); task.wait(0.5); Features.setSpoofer(true); task.wait(0.5); spooferReloading = false
 end
 
--- DEVICE SPOOFER
-local SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
-local function spoofDevice(device) SetControlsRemote:FireServer("MouseKeyboard"); task.wait(0.3); SetControlsRemote:FireServer(device) end
+-- DEVICE SPOOFER (task.spawn fixed)
+local SetControlsRemote = nil
+pcall(function()
+    SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
+end)
+local function spoofDevice(device)
+    task.spawn(function()
+        if not SetControlsRemote then return end
+        SetControlsRemote:FireServer("MouseKeyboard")
+        task.wait(0.3)
+        SetControlsRemote:FireServer(device)
+    end)
+end
 local autoSpoofDevice = nil
 
 -- STRETCH RES
@@ -550,10 +560,11 @@ pcall(function()
     if queue_on_teleport then
         local saved = getAllConfigs()
         if saved["__autoLoadEnabled"] then
-            queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code.lua"))()]])
+            queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code"))()]])
         end
     end
 end)
+
 -- ═══════════════════════════════════════════════════════
 --  UI (Logo + All Pages)
 -- ═══════════════════════════════════════════════════════
@@ -613,7 +624,7 @@ local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brand
 local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,2);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
 local logo=Instance.new("ImageLabel",brandBlock)
 logo.Size=UDim2.new(0,60,0,60);logo.BackgroundTransparency=1
-logo.Image="rbxassetid://97453625372680"
+logo.Image="rbxassetid://134381155775118"
 logo.ScaleType=Enum.ScaleType.Fit
 logo.LayoutOrder=1
 mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
