@@ -55,23 +55,6 @@ end
 
 local Features = {}
 
--- ANTI-CHEAT BYPASS (Safe)
-local Services = setmetatable({}, {__index = function(_, k) return game:GetService(k) end})
-local function SafeDestroy(obj)
-    if typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end
-end
-local function DeepCleanup()
-    for _, v in ipairs(LP.PlayerGui:GetDescendants()) do
-        if v.Name == "ClientAlert" or v.Name == "LocalScript3" then SafeDestroy(v) end
-    end
-    for _, v in ipairs((LP:FindFirstChild("PlayerScripts") and LP.PlayerScripts:GetDescendants() or {})) do
-        if v.Name == "ClientAlert" or v.Name == "LocalScript3" then SafeDestroy(v) end
-    end
-end
-...
-task.spawn(function() while task.wait(10) do DeepCleanup() end end)
-DeepCleanup()
-
 -- Drawing check
 local hasDrawing = pcall(function() return Drawing.new("Circle") end)
 
