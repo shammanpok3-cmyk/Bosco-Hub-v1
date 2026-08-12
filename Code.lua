@@ -442,11 +442,9 @@ local function runSpoofer()
     local victimID = Features.spooferSettings.victim
     if not victimID or victimID == 0 then victimID = LP.UserId end
     getgenv().Config = {
-        victim = victimID, helper = Features.spooferSettings.helper or "",
-        level = 67, streak = Features.spooferSettings.streak or 67,
-        elo = Features.spooferSettings.elo or 0, keys = Features.spooferSettings.keys or 67,
-        premium = false, verified = Features.spooferSettings.verified or false,
-        unlockall = false, platform = "", join = "discord.gg/rivalscomp"
+        victim = victimID,
+        streak = Features.spooferSettings.streak or 67,
+        verified = Features.spooferSettings.verified or false,
     }
     loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/ab95af5e8df41b1c817329fcd4e97840/raw/2865e050e0d160c7aa7e4e862f9cf59eed41ca2a/gistfile1.txt"))()
 end
@@ -455,18 +453,6 @@ function Features.reloadSpoofer()
     if not Features.spooferEnabled or spooferReloading then return end
     spooferReloading = true; Features.setSpoofer(false); task.wait(0.5); Features.setSpoofer(true); task.wait(0.5); spooferReloading = false
 end
-
--- DEVICE SPOOFER
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SetControlsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
-
-local function spoofDevice(wantedDevice)
-    SetControlsRemote:FireServer("MouseKeyboard")
-    task.wait(0.3)
-    SetControlsRemote:FireServer(wantedDevice)
-end
-
-local autoSpoofDevice = nil
 
 -- STRETCH RES
 Features.stretchResEnabled = false
@@ -506,7 +492,7 @@ local function saveConfig(name, overwrite)
     for k, v in pairs(Keybinds) do
         pcall(function() keybindsCopy[k] = { key = v.key.Name, holdMode = v.holdMode, label = v.label } end)
     end
-    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=keybindsCopy }
+    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=keybindsCopy }
     saveConfigsToFile(configs); return true, "Saved!"
 end
 local function loadConfig(name)
@@ -526,7 +512,6 @@ local function loadConfig(name)
     if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end
     if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end
     if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
-    if data.autoSpoofDevice ~= nil then autoSpoofDevice = data.autoSpoofDevice end
     if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end
     if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
     if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] then Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key; Keybinds[k].holdMode = v.holdMode end end end
@@ -758,7 +743,6 @@ local function renderFlick()
     secHead("💨 Flick",lo);lo+=1
     createToggle({title="Enable Flick",desc="Flick to nearest head and shoot",layoutOrder=lo,default=Features.flickEnabled,onChange=function(on)Features.setFlick(on)end});lo+=1
     createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
-    createDualSlider({title="Speed",desc="Flick speed multiplier",layoutOrder=lo,default=s.Speed,min=5,max=50,onChange=function(v)s.Speed=v end});lo+=1
     createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
     createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
     createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
@@ -786,7 +770,6 @@ local function renderUnlockAll()
     clearContent();local lo=1
     secHead("🎨 Cosmetics",lo);lo+=1
     createActionRow({title="Unlock All Cosmetics",desc="Press to unlock all skins",layoutOrder=lo,buttonText="🔓 UNLOCK",onClick=function()Features.setUnlockAll(true);showToast("Unlocking...")end});lo+=1
-    createToggle({title="Auto Skin Changer",desc="Auto-load skin changer on join/teleport",layoutOrder=lo,default=Features.skinChangerEnabled,onChange=function(on)Features.setSkinChanger(on);if on then showToast("Skin changer will auto-load!")end end});lo+=1
 end
 
 local function renderStaffDetector()
@@ -821,13 +804,6 @@ local function renderFun()
     mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
     streakInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(streakInput.Text) if num then s.streak=math.floor(num);Features.reloadSpoofer() end end end)
     createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.verified,onChange=function(on)s.verified=on;Features.reloadSpoofer()end});lo+=1
-    mkSep(mainScroll,lo);lo+=1
-    secHead("📱 Device Spoofer",lo);lo+=1
-    local devices={{"Mouse & Keyboard","MouseKeyboard"},{"Gamepad","Gamepad"},{"Mobile (Touch)","Touch"},{"VR","VR"}}
-    for _,device in ipairs(devices)do
-        createToggle({title=device[1],desc="Auto-spoof as "..device[1].." on respawn",layoutOrder=lo,default=autoSpoofDevice==device[2],onChange=function(on)if on then autoSpoofDevice=device[2];spoofDevice(device[2]);showToast("Auto-spoof: "..device[1])else autoSpoofDevice=nil;showToast("Auto-spoof OFF")end end})
-        lo+=1
-    end
     mkSep(mainScroll,lo);lo+=1
     secHead("📐 Stretch Resolution",lo);lo+=1
     createToggle({title="Enable Stretch Res",desc="Makes enemies wider (easier to hit)",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
