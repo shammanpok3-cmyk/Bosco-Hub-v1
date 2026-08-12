@@ -457,13 +457,15 @@ function Features.reloadSpoofer()
 end
 
 -- DEVICE SPOOFER
-local SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
-local function spoofDevice(device)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SetControlsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
+local function spoofDevice(wantedDevice)
     SetControlsRemote:FireServer("MouseKeyboard")
     task.wait(0.3)
-    SetControlsRemote:FireServer(device)
+    SetControlsRemote:FireServer(wantedDevice)
 end
 local autoSpoofDevice = nil
+
 -- STRETCH RES
 Features.stretchResEnabled = false
 Features.stretchResValue = 0.81
