@@ -413,7 +413,7 @@ local unlockRan = false
 local function runUnlockAll()
     if unlockRan then return end; unlockRan = true; task.wait(3)
     pcall(function()
-        loadstring(game:HttpGet("YOUR_GIST_RAW_URL_HERE"))()
+        loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/9a30276b9e421e14e8289f3677526802/raw/fa6e61463a15bca622ef55072d2c035f14f6165e/gistfile1.txt"))()
     end)
 end
 
