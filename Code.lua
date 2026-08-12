@@ -1,25 +1,3 @@
--- Compatibility shim: prefer task.wait but fall back to wait()
-if type(task) ~= "table" or type(task.wait) ~= "function" then
-    repeat wait() until game:IsLoaded()
-else
-    repeat task.wait() until game:IsLoaded()
-end
-
--- Safe no-op shims for executor-only globals so the script doesn't error in Studio / non-executor envs
-if type(mousemoverel) ~= "function" then mousemoverel = function(...) end end
-if type(mouse1press) ~= "function" then mouse1press = function(...) end end
-if type(mouse1release) ~= "function" then mouse1release = function(...) end end
-if type(hookmetamethod) ~= "function" then hookmetamethod = nil end
-if type(writefile) ~= "function" then writefile = nil end
-if type(readfile) ~= "function" then readfile = nil end
-if type(isfile) ~= "function" then isfile = nil end
-if type(queue_on_teleport) ~= "function" then queue_on_teleport = nil end
-
--- Preserve existing Drawing check usage (some code uses pcall to detect Drawing)
-local hasDrawing = pcall(function() return Drawing and Drawing.new end)
-
-repeat task.wait() until game:IsLoaded()
-
 --[[
     Bosco Hub V1 — LocalScript (PC)
     Made by Bosco
@@ -35,7 +13,7 @@ local Workspace = game:GetService("Workspace")
 local CollectionService = game:GetService("CollectionService")
 
 local LP = Players.LocalPlayer
-local PGui = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui", 10)
+local PGui = LP:WaitForChild("PlayerGui")
 local Camera = Workspace.CurrentCamera
 
 -- TEAM CHECK (Auto TeamID)
@@ -74,23 +52,6 @@ local function isTargetVisible(origin, targetPos, targetPlayerObj)
 end
 
 local Features = {}
-
--- ANTI-CHEAT BYPASS (Safe)
-local Services = setmetatable({}, {__index = function(_, k) return game:GetService(k) end})
-local function SafeDestroy(obj)
-    if typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end
-end
-local function DeepCleanup()
-    for _, v in ipairs(LP.PlayerGui:GetDescendants()) do
-        if v.Name == "ClientAlert" or v.Name == "LocalScript3" then SafeDestroy(v) end
-    end
-    for _, v in ipairs((LP:FindFirstChild("PlayerScripts") and LP.PlayerScripts:GetDescendants() or {})) do
-        if v.Name == "ClientAlert" or v.Name == "LocalScript3" then SafeDestroy(v) end
-    end
-end
-...
-task.spawn(function() while task.wait(10) do DeepCleanup() end end)
-DeepCleanup()
 
 -- Drawing check
 local hasDrawing = pcall(function() return Drawing.new("Circle") end)
@@ -135,16 +96,16 @@ local function updateESP(p)
         if not d.bb or not d.bb.Parent then
             local bb=Instance.new("BillboardGui"); bb.Name="BHBB"; bb.AlwaysOnTop=true; bb.Size=UDim2.fromOffset(130,44); bb.StudsOffset=Vector3.new(0,3.5,0); bb.Adornee=hrp; bb.Parent=hrp
             local ul=Instance.new("UIListLayout"); ul.HorizontalAlignment=Enum.HorizontalAlignment.Center; ul.SortOrder=Enum.SortOrder.LayoutOrder; ul.Parent=bb
-            local nl=Instance.new("TextLabel"); nl.Name="NL"; nl.BackgroundTransparency=1; nl.Size=UDim2.new(1,0,0,18); nl.Font=Enum.Font.GothamBold; nl.TextSize=13; nl.TextStrokeTransparency=0.4; nl.[...]
-            local dl=Instance.new("TextLabel"); dl.Name="DL"; dl.BackgroundTransparency=1; dl.Size=UDim2.new(1,0,0,16); dl.Font=Enum.Font.Gotham; dl.TextSize=11; dl.TextStrokeTransparency=0.4; dl.Layo[...]
+            local nl=Instance.new("TextLabel"); nl.Name="NL"; nl.BackgroundTransparency=1; nl.Size=UDim2.new(1,0,0,18); nl.Font=Enum.Font.GothamBold; nl.TextSize=13; nl.TextStrokeTransparency=0.4; nl.LayoutOrder=1; nl.Parent=bb
+            local dl=Instance.new("TextLabel"); dl.Name="DL"; dl.BackgroundTransparency=1; dl.Size=UDim2.new(1,0,0,16); dl.Font=Enum.Font.Gotham; dl.TextSize=11; dl.TextStrokeTransparency=0.4; dl.LayoutOrder=2; dl.Parent=bb
             d.bb=bb
         end
         local bb=d.bb; bb.Adornee=hrp; bb.Enabled=true
-        local nl=bb:FindFirstChild("NL"); if nl then nl.Visible=Features.espSettings.Name; if Features.espSettings.Name then nl.Text=p.DisplayName~="" and p.DisplayName or p.Name; nl.TextColor3=col en[...]
-        local dl=bb:FindFirstChild("DL"); if dl then dl.Visible=Features.espSettings.Distance; if Features.espSettings.Distance then dl.Text=math.floor((Camera.CFrame.Position-hrp.Position).Magnitude)[...]
+        local nl=bb:FindFirstChild("NL"); if nl then nl.Visible=Features.espSettings.Name; if Features.espSettings.Name then nl.Text=p.DisplayName~="" and p.DisplayName or p.Name; nl.TextColor3=col end end
+        local dl=bb:FindFirstChild("DL"); if dl then dl.Visible=Features.espSettings.Distance; if Features.espSettings.Distance then dl.Text=math.floor((Camera.CFrame.Position-hrp.Position).Magnitude).." studs"; dl.TextColor3=Color3.fromRGB(220,220,220) end end
     elseif d.bb then d.bb:Destroy(); d.bb=nil end
 end
-local function startESPLoop() if espLoop then return end; espLoop=RunService.RenderStepped:Connect(function() if not Features.espEnabled then return end; for _,p in ipairs(Players:GetPlayers()) do upd[...]
+local function startESPLoop() if espLoop then return end; espLoop=RunService.RenderStepped:Connect(function() if not Features.espEnabled then return end; for _,p in ipairs(Players:GetPlayers()) do updateESP(p) end end) end
 local function stopESPLoop() if espLoop then espLoop:Disconnect(); espLoop=nil end end
 function Features.setESP(on) Features.espEnabled=on; if on then startESPLoop() else stopESPLoop(); removeAllESP() end end
 function Features.setESPSetting(k,v) Features.espSettings[k]=v; if Features.espEnabled then for _,p in ipairs(Players:GetPlayers()) do updateESP(p) end end end
@@ -172,5 +133,1212 @@ local function setupSilentAim()
             if not self.ClientFighter or not self.ClientFighter.IsLocalPlayer then
                 return unpack(results)
             end
+            
+            if not Features.silentAimEnabled then
+                return unpack(results)
+            end
+            
+            local shotData = results[3]
+            if not shotData or typeof(shotData) ~= "table" then
+                return unpack(results)
+            end
+            
+            local cam = Camera
+            if not cam then return unpack(results) end
+            
+            local mp = UIS:GetMouseLocation()
+            local center = Vector2.new(mp.X, mp.Y)
+            local bestPart, bestDist = nil, Features.silentAimSettings.FOV
+            
+            for _, entity in CollectionService:GetTagged("Entity") do
+                if entity == LP.Character then continue end
+                local player = Players:GetPlayerFromCharacter(entity)
+                if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
+                local hum = entity:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health <= 0 then continue end
+                local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
+                if not part or not part:IsA("BasePart") then continue end
+                if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
+                local sp, onScreen = cam:WorldToViewportPoint(part.Position)
+                if not onScreen then continue end
+                local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+                if d < bestDist then bestDist = d; bestPart = part end
+            end
+            
+            if not bestPart then return unpack(results) end
+            
+            local headPos = bestPart.Position
+            local origin = cam.CFrame.Position
+            results[3] = Utility:EncodeCFrame(CFrame.new(origin, headPos))
+            
+            return unpack(results)
+        end
+    end)
+end
 
-[TRUNCATED]
+function Features.setSilentAim(on)
+    Features.silentAimEnabled = on
+    if on then setupSilentAim() end
+end
+
+RunService.RenderStepped:Connect(function()
+    if not hasDrawing then return end
+    if Features.silentAimEnabled and Features.silentAimSettings.ShowFOV then
+        if not silentFovCircle then
+            silentFovCircle = Drawing.new("Circle")
+            silentFovCircle.Thickness = 1.2; silentFovCircle.NumSides = 100
+            silentFovCircle.Filled = false; silentFovCircle.ZIndex = 999; silentFovCircle.Transparency = 0.3
+            silentFovCircle.Color = Color3.fromRGB(100, 200, 255)
+        end
+        silentFovCircle.Visible = true
+        silentFovCircle.Radius = Features.silentAimSettings.FOV
+        local mp = UIS:GetMouseLocation()
+        silentFovCircle.Position = Vector2.new(mp.X, mp.Y)
+    elseif silentFovCircle then
+        silentFovCircle.Visible = false
+    end
+end)
+
+-- AIMBOT
+Features.aimbotEnabled = false
+Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80, PostKillInertia=true }
+local function getAdaptiveSpeed(baseSpeed)
+    local sens = UIS.MouseDeltaSensitivity or 0.5
+    local multiplier = 0.5 / math.max(sens, 0.01)
+    if Features.aimbotSettings.ADSEnabled and Features.aimbotSettings.RequireRightClick and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local adsVal = math.max(Features.aimbotSettings.ADSMultiplier or 100, 1)
+        multiplier = multiplier * (100 / adsVal)
+    end
+    return baseSpeed * multiplier * 5
+end
+local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
+local function createTargetIndicator()
+    if targetIndicator then return end
+    targetIndicator=Instance.new("BillboardGui"); targetIndicator.Name="BHTarget"; targetIndicator.Size=UDim2.new(0,24,0,24); targetIndicator.AlwaysOnTop=true; targetIndicator.Enabled=false; targetIndicator.Parent=PGui
+    local f=Instance.new("Frame",targetIndicator); f.Size=UDim2.new(1,0,1,0); f.BackgroundColor3=Color3.fromRGB(255,50,50); f.BackgroundTransparency=0.3; f.BorderSizePixel=0; Instance.new("UICorner",f).CornerRadius=UDim.new(1,0)
+end
+local function updateFOVCircle()
+    if not hasDrawing then return end
+    if not Features.aimbotSettings.ShowFOV then if fovCircle then fovCircle.Visible=false end; return end
+    if not fovCircle then fovCircle=Drawing.new("Circle"); fovCircle.Thickness=1.2; fovCircle.NumSides=100; fovCircle.Filled=false; fovCircle.ZIndex=999; fovCircle.Transparency=0.3 end
+    fovCircle.Visible=true; fovCircle.Radius=Features.aimbotSettings.FOV
+    local mp=UIS:GetMouseLocation(); fovCircle.Position=Vector2.new(mp.X,mp.Y)
+    fovCircle.Color=lockedTarget and Color3.fromRGB(100,255,100) or Color3.fromRGB(255,255,255)
+end
+local function isValidTarget(part) if not part or not part.Parent then return false end; local h=part.Parent:FindFirstChildOfClass("Humanoid"); return h and h.Health>0 and not part.Parent:FindFirstChildOfClass("ForceField") end
+local function getPredictedPosition(part)
+    local pos = part.Position
+    if not Features.aimbotSettings.Prediction then return pos end
+    local vel = part.AssemblyLinearVelocity
+    if vel.Magnitude < 0.5 then return pos end
+    local cam = Camera; if not cam then return pos end
+    local distance = (cam.CFrame.Position - pos).Magnitude
+    local bulletSpeed = 450
+    local char = LP.Character
+    if char then local tool = char:FindFirstChildOfClass("Tool")
+        if tool then local config = tool:FindFirstChild("Configuration") or tool:FindFirstChild("Stats")
+            if config then local bs = config:FindFirstChild("BulletSpeed") or config:FindFirstChild("ProjectileSpeed") or config:FindFirstChild("Velocity")
+                if bs and bs.Value then bulletSpeed = bs.Value end
+            end
+        end
+    end
+    return pos + (vel * (distance / bulletSpeed))
+end
+local function getBestTarget()
+    local cam=Camera; if not cam then return nil,nil end
+    local mp=UIS:GetMouseLocation(); local fovCenter=Vector2.new(mp.X,mp.Y); local s=Features.aimbotSettings; local now=tick()
+    if s.StickyAim and lockedTarget and isValidTarget(lockedTarget) and now-lockTime<s.StickyTime then
+        local tPlayer=Players:GetPlayerFromCharacter(lockedTarget.Parent)
+        if not (s.TeamCheck and isTeammate(tPlayer)) then
+            local aimPos=getPredictedPosition(lockedTarget)
+            if (cam.CFrame.Position-aimPos).Magnitude<=s.MaxDistance then
+                local sp,on=cam:WorldToViewportPoint(aimPos)
+                if on and sp.Z>0 and (Vector2.new(sp.X,sp.Y)-fovCenter).Magnitude<=s.FOV*1.3 then
+                    if not s.WallCheck or isTargetVisible(cam.CFrame.Position,aimPos,tPlayer) then targetPlayer=tPlayer; return lockedTarget,Vector2.new(sp.X,sp.Y) end
+                end
+            end
+        end
+        lockedTarget=nil; targetPlayer=nil
+    end
+    local bestPart, bestDist = nil, s.FOV
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p==LP then continue end
+        if s.TeamCheck and isTeammate(p) then continue end
+        local char=p.Character; if not char then continue end
+        local hum=char:FindFirstChildOfClass("Humanoid"); if hum and hum.Health<=0 then continue end
+        local part=char:FindFirstChild(s.TargetPart) or char:FindFirstChild("Head")
+        if not part then continue end
+        local aimPos = getPredictedPosition(part)
+        if (cam.CFrame.Position-aimPos).Magnitude>s.MaxDistance then continue end
+        local sp, onScreen = cam:WorldToViewportPoint(aimPos)
+        if not onScreen or sp.Z<=0 then continue end
+        local dist2D = (Vector2.new(sp.X,sp.Y)-fovCenter).Magnitude
+        if dist2D>s.FOV then continue end
+        if s.WallCheck and not isTargetVisible(cam.CFrame.Position,aimPos,p) then continue end
+        if dist2D < bestDist then bestDist = dist2D; bestPart = part end
+    end
+    if not bestPart then return nil,nil end
+    lockedTarget=bestPart; lockTime=now
+    local aimPos = getPredictedPosition(bestPart)
+    local sp = cam:WorldToViewportPoint(aimPos)
+    return bestPart, Vector2.new(sp.X, sp.Y)
+end
+local function moveMouseToTarget(targetScreenPos,overrideSpeed)
+    local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local delta=targetScreenPos-cm; local dist=delta.Magnitude
+    if dist<2 then return true end
+    local speed = getAdaptiveSpeed(overrideSpeed or Features.aimbotSettings.AimSpeed)
+    local distMult
+    if dist < 30 then distMult = 0.65
+    elseif dist < 80 then distMult = 0.80
+    elseif dist < 200 then distMult = 0.90
+    else distMult = 1.0 end
+    local moveAmount = math.min(speed * 0.8, dist * 0.95) * distMult
+    local dir = delta.Unit; mousemoverel(dir.X * moveAmount, dir.Y * moveAmount)
+    return false
+end
+local function handleAutoFire(targetScreenPos)
+    if not Features.aimbotSettings.AutoFire then onTargetTime=nil; return end
+    local mp=UIS:GetMouseLocation(); local cm=Vector2.new(mp.X,mp.Y); local dist=(cm-targetScreenPos).Magnitude; local now=tick()
+    if dist<20 then
+        if not onTargetTime then onTargetTime=now end
+        if now-onTargetTime >= Features.aimbotSettings.AutoFireDelay then
+            if Features.aimbotSettings.AutoFireHold then mouse1press() else 
+                mouse1press(); task.wait(0.01); mouse1release(); onTargetTime=now
+                if Features.aimbotSettings.PostKillInertia then
+                    local driftX = (math.random() - 0.5) * 10
+                    local driftY = math.random(2, 6)
+                    mousemoverel(driftX, driftY)
+                end
+            end
+        end
+    else onTargetTime=nil; if Features.aimbotSettings.AutoFireHold then mouse1release() end end
+end
+local function aimbotRenderStep()
+    if not Features.aimbotEnabled then if fovCircle then fovCircle.Visible=false end; return end
+    local char = LP.Character
+    if not char or not char:FindFirstChildOfClass("Humanoid") or char:FindFirstChildOfClass("Humanoid").Health <= 0 then
+        if targetIndicator then targetIndicator.Enabled=false end; return
+    end
+    updateFOVCircle()
+    if Features.aimbotSettings.RequireRightClick and not UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        lockedTarget=nil; targetPlayer=nil; onTargetTime=nil
+        if targetIndicator then targetIndicator.Enabled=false end; return
+    end
+    local targetPart,targetScreenPos=getBestTarget()
+    if targetPart and targetPart.Parent then
+        if not targetIndicator then createTargetIndicator() end
+        if targetIndicator then targetIndicator.Enabled=true; targetIndicator.Adornee=targetPart end
+    elseif targetIndicator then targetIndicator.Enabled=false end
+    if not targetScreenPos then return end
+    moveMouseToTarget(targetScreenPos); handleAutoFire(targetScreenPos)
+end
+local function startAimbotLoop() if aimbotConnection then return end; aimbotConnection=RunService.RenderStepped:Connect(aimbotRenderStep) end
+local function stopAimbotLoop() if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection=nil end; lockedTarget=nil; targetPlayer=nil; onTargetTime=nil; mouse1release(); if fovCircle then fovCircle.Visible=false end; if targetIndicator then targetIndicator.Enabled=false end end
+function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbotLoop() else stopAimbotLoop() end end
+
+-- FLICK (Instant Snap)
+Features.flickEnabled = false
+Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true }
+local isFlicking, flickFovCircle = false, nil
+local function updateFlickFOV()
+    if not hasDrawing then return end
+    if not Features.flickSettings.ShowFOV then if flickFovCircle then flickFovCircle.Visible=false end; return end
+    if not flickFovCircle then flickFovCircle=Drawing.new("Circle"); flickFovCircle.Thickness=1.2; flickFovCircle.NumSides=100; flickFovCircle.Filled=false; flickFovCircle.ZIndex=999; flickFovCircle.Transparency=0.3 end
+    flickFovCircle.Visible=true; flickFovCircle.Radius=Features.flickSettings.FOV
+    local mp=UIS:GetMouseLocation(); flickFovCircle.Position=Vector2.new(mp.X,mp.Y); flickFovCircle.Color=Color3.fromRGB(255,200,50)
+end
+function Features.setFlick(on) Features.flickEnabled=on; if on then setupSilentAim() end end
+local function doFlick()
+    if isFlicking then return end; isFlicking = true
+    local targetHead = nil
+    local cam = Camera; local s = Features.flickSettings
+    if cam then
+        local bestDist = s.FOV
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == LP then continue end
+            if s.TeamCheck and isTeammate(p) then continue end
+            local char = p.Character; if not char then continue end
+            local head = char:FindFirstChild("Head"); if not head then continue end
+            local hum = char:FindFirstChildOfClass("Humanoid"); if hum and hum.Health <= 0 then continue end
+            if (cam.CFrame.Position - head.Position).Magnitude > s.MaxDistance then continue end
+            if s.WallCheck and not isTargetVisible(cam.CFrame.Position, head.Position, p) then continue end
+            local aimPos = head.Position
+            if Features.aimbotSettings.Prediction then
+                local vel = head.AssemblyLinearVelocity
+                if vel.Magnitude > 0.5 then
+                    local distance = (cam.CFrame.Position - head.Position).Magnitude; local bulletSpeed = 450
+                    local c = LP.Character
+                    if c then local t = c:FindFirstChildOfClass("Tool")
+                        if t then local cfg = t:FindFirstChild("Configuration") or t:FindFirstChild("Stats")
+                            if cfg then local bs = cfg:FindFirstChild("BulletSpeed") or cfg:FindFirstChild("ProjectileSpeed") or cfg:FindFirstChild("Velocity")
+                                if bs and bs.Value then bulletSpeed = bs.Value end
+                            end
+                        end
+                    end
+                    aimPos = head.Position + (vel * (distance / bulletSpeed))
+                end
+            end
+            local sp, on = cam:WorldToViewportPoint(aimPos)
+            if on then
+                local d = math.sqrt((sp.X - UIS:GetMouseLocation().X)^2 + (sp.Y - UIS:GetMouseLocation().Y)^2)
+                if d < bestDist then bestDist = d; targetHead = head end
+            end
+        end
+    end
+    if not targetHead then isFlicking = false; return end
+    
+    local startX, startY = UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y
+    local sp, on = cam:WorldToViewportPoint(targetHead.Position)
+    if not on then isFlicking = false; return end
+    
+    -- Snap to head
+    local dx = sp.X - startX
+    local dy = sp.Y - startY
+    mousemoverel(dx, dy)
+    
+    -- Shoot instantly with silent aim
+    local wasSilent = Features.silentAimEnabled
+    Features.silentAimEnabled = true; setupSilentAim()
+    mouse1press()
+    
+    -- Return immediately
+    mousemoverel(-dx, -dy)
+    mouse1release()
+    Features.silentAimEnabled = wasSilent
+    isFlicking = false
+end
+RunService.RenderStepped:Connect(function() if Features.flickEnabled then updateFlickFOV() end end)
+
+-- UNLOCK ALL (Unified)
+Features.unlockAllEnabled = false
+Features.skinChangerEnabled = false
+local unlockRan = false
+
+local function runUnlockAll()
+    if unlockRan then return end; unlockRan = true; task.wait(3)
+    pcall(function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local HttpService = game:GetService("HttpService")
+        local player = Players.LocalPlayer
+        local playerScripts = player.PlayerScripts
+        local controllers = playerScripts.Controllers
+        
+        local EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10))
+        if EnumLibrary then EnumLibrary:WaitForEnumBuilder() end
+        local CosmeticLibrary = require(ReplicatedStorage.Modules:WaitForChild("CosmeticLibrary", 10))
+        local ItemLibrary = require(ReplicatedStorage.Modules:WaitForChild("ItemLibrary", 10))
+        local DataController = require(controllers:WaitForChild("PlayerDataController", 10))
+        local equipped, favorites = {}, {}
+        local constructingWeapon, viewingProfile, lastUsedWeapon = nil, nil, nil
+        
+        local function cloneCosmetic(name, cosmeticType, options)
+            local base = CosmeticLibrary.Cosmetics[name]
+            if not base then return nil end
+            local data = {}
+            for key, value in pairs(base) do data[key] = value end
+            data.Name = name; data.Type = data.Type or cosmeticType
+            data.Seed = data.Seed or math.random(1, 1000000)
+            if EnumLibrary then
+                local s, eid = pcall(EnumLibrary.ToEnum, EnumLibrary, name)
+                if s and eid then data.Enum, data.ObjectID = eid, data.ObjectID or eid end
+            end
+            if options then
+                if options.inverted ~= nil then data.Inverted = options.inverted end
+                if options.favoritesOnly ~= nil then data.OnlyUseFavorites = options.favoritesOnly end
+            end
+            return data
+        end
+        
+        local saveFile = "unlockall/config.json"
+        local function saveConfig()
+            if not writefile then return end
+            pcall(function()
+                local config = {equipped = {}, favorites = favorites}
+                for weapon, cosmetics in pairs(equipped) do
+                    config.equipped[weapon] = {}
+                    for cosmeticType, cosmeticData in pairs(cosmetics) do
+                        if cosmeticData and cosmeticData.Name then
+                            config.equipped[weapon][cosmeticType] = {
+                                name = cosmeticData.Name, seed = cosmeticData.Seed, inverted = cosmeticData.Inverted
+                            }
+                        end
+                    end
+                end
+                makefolder("unlockall")
+                writefile(saveFile, HttpService:JSONEncode(config))
+            end)
+        end
+        
+        local function loadConfig()
+            if not readfile or not isfile or not isfile(saveFile) then return end
+            pcall(function()
+                local config = HttpService:JSONDecode(readfile(saveFile))
+                if config.equipped then
+                    for weapon, cosmetics in pairs(config.equipped) do
+                        equipped[weapon] = {}
+                        for cosmeticType, cosmeticData in pairs(cosmetics) do
+                            local cloned = cloneCosmetic(cosmeticData.name, cosmeticType, {inverted = cosmeticData.inverted})
+                            if cloned then cloned.Seed = cosmeticData.seed; equipped[weapon][cosmeticType] = cloned end
+                        end
+                    end
+                end
+                favorites = config.favorites or {}
+            end)
+        end
+        
+        local function isNotFinisher(name)
+            if not name then return false end
+            local lower = name:lower()
+            return not (lower:find("finisher") or lower:find("finish") or lower:find("execution"))
+        end
+        
+        local originalOwnsCosmetic = CosmeticLibrary.OwnsCosmetic
+        CosmeticLibrary.OwnsCosmetic = function(self, inventory, name, weapon)
+            if name:find("MISSING_") then return originalOwnsCosmetic(self, inventory, name, weapon) end
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return originalOwnsCosmetic(self, inventory, name, weapon)
+        end
+        
+        CosmeticLibrary.OwnsCosmeticNormally = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return false
+        end
+        CosmeticLibrary.OwnsCosmeticUniversally = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return false
+        end
+        CosmeticLibrary.OwnsCosmeticForWeapon = function(self, inventory, name, weapon)
+            local cosmetic = CosmeticLibrary.Cosmetics[name]
+            if cosmetic and isNotFinisher(name) then return true end
+            return false
+        end
+        
+        local originalGet = DataController.Get
+        DataController.Get = function(self, key)
+            local data = originalGet(self, key)
+            if key == "CosmeticInventory" then
+                local proxy = {}
+                if data then for k, v in pairs(data) do proxy[k] = v end end
+                return setmetatable(proxy, {__index = function(t, k)
+                    local cosmetic = CosmeticLibrary.Cosmetics[k]
+                    if cosmetic and isNotFinisher(k) then return true end
+                    return nil
+                end})
+            end
+            if key == "FavoritedCosmetics" then
+                local result = data and table.clone(data) or {}
+                for weapon, favs in pairs(favorites) do
+                    result[weapon] = result[weapon] or {}
+                    for name, isFav in pairs(favs) do
+                        if isNotFinisher(name) then result[weapon][name] = isFav end
+                    end
+                end
+                return result
+            end
+            return data
+        end
+        
+        local originalGetWeaponData = DataController.GetWeaponData
+        DataController.GetWeaponData = function(self, weaponName)
+            local data = originalGetWeaponData(self, weaponName)
+            if not data then return nil end
+            local merged = {}
+            for key, value in pairs(data) do merged[key] = value end
+            merged.Name = weaponName
+            if equipped[weaponName] then
+                for cosmeticType, cosmeticData in pairs(equipped[weaponName]) do merged[cosmeticType] = cosmeticData end
+            end
+            return merged
+        end
+        
+        local FighterController
+        pcall(function() FighterController = require(controllers:WaitForChild("FighterController", 10)) end)
+        
+        if hookmetamethod then
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            local dr = remotes and remotes:FindFirstChild("Data")
+            local eqR = dr and dr:FindFirstChild("EquipCosmetic")
+            local favR = dr and dr:FindFirstChild("FavoriteCosmetic")
+            local rr = remotes and remotes:FindFirstChild("Replication")
+            local fr = rr and rr:FindFirstChild("Fighter")
+            local useR = fr and fr:FindFirstChild("UseItem")
+            
+            if eqR then
+                local oldNC = hookmetamethod(game, "__namecall", function(self, ...)
+                    if getnamecallmethod() ~= "FireServer" then return oldNC(self, ...) end
+                    local args = {...}
+                    if useR and self == useR then
+                        local oid = args[1]
+                        if FighterController then
+                            pcall(function()
+                                local fighter = FighterController:GetFighter(player)
+                                if fighter and fighter.Items then
+                                    for _, item in pairs(fighter.Items) do
+                                        if item:Get("ObjectID") == oid then lastUsedWeapon = item.Name; break end
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                    if self == eqR then
+                        local wn, ct, cn, opts = args[1], args[2], args[3], args[4] or {}
+                        if ct and isNotFinisher(ct) and isNotFinisher(cn) then
+                            if cn and cn ~= "None" and cn ~= "" then
+                                local inv = DataController:Get("CosmeticInventory")
+                                if inv and rawget(inv, cn) then return oldNC(self, ...) end
+                            end
+                            equipped[wn] = equipped[wn] or {}
+                            if not cn or cn == "None" or cn == "" then
+                                equipped[wn][ct] = nil
+                                if not next(equipped[wn]) then equipped[wn] = nil end
+                            else
+                                local cloned = cloneCosmetic(cn, ct, {inverted = opts.IsInverted, favoritesOnly = opts.OnlyUseFavorites})
+                                if cloned then equipped[wn][ct] = cloned end
+                            end
+                            task.defer(function()
+                                pcall(function() DataController.CurrentData:Replicate("WeaponInventory") end)
+                                task.wait(0.2); saveConfig()
+                            end)
+                            return
+                        end
+                        return oldNC(self, ...)
+                    end
+                    if self == favR then
+                        local cosmetic = CosmeticLibrary.Cosmetics[args[2]]
+                        if cosmetic and isNotFinisher(args[2]) then
+                            favorites[args[1]] = favorites[args[1]] or {}
+                            favorites[args[1]][args[2]] = args[3] or nil
+                            saveConfig()
+                            task.spawn(function() pcall(function() DataController.CurrentData:Replicate("FavoritedCosmetics") end) end)
+                        end
+                        return
+                    end
+                    return oldNC(self, ...)
+                end)
+            end
+        end
+        
+        local ClientItem
+        pcall(function() ClientItem = require(player.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem) end)
+        if ClientItem and ClientItem._CreateViewModel then
+            local origCVM = ClientItem._CreateViewModel
+            ClientItem._CreateViewModel = function(self, vmr)
+                local wn = self.Name
+                local wp = self.ClientFighter and self.ClientFighter.Player
+                constructingWeapon = (wp == player) and wn or nil
+                if wp == player and equipped[wn] and vmr then
+                    local dk, sk, ck, wk, nk = self:ToEnum("Data"), self:ToEnum("Skin"), self:ToEnum("Charm"), self:ToEnum("Wrap"), self:ToEnum("Name")
+                    local c = equipped[wn]
+                    if vmr[dk] then
+                        if c.Skin then vmr[dk][sk] = c.Skin; vmr[dk][nk] = c.Skin.Name end
+                        if c.Charm then vmr[dk][ck] = c.Charm end
+                        if c.Wrap then vmr[dk][wk] = c.Wrap end
+                    elseif vmr.Data then
+                        if c.Skin then vmr.Data.Skin = c.Skin; vmr.Data.Name = c.Skin.Name end
+                        if c.Charm then vmr.Data.Charm = c.Charm end
+                        if c.Wrap then vmr.Data.Wrap = c.Wrap end
+                    end
+                end
+                local result = origCVM(self, vmr)
+                constructingWeapon = nil
+                return result
+            end
+        end
+        
+        local vmm = player.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
+        if vmm then
+            local ClientViewModel = require(vmm)
+            if ClientViewModel.GetCharm then
+                local origGC = ClientViewModel.GetCharm
+                ClientViewModel.GetCharm = function(self)
+                    local wn = self.ClientItem and self.ClientItem.Name
+                    local wp = self.ClientItem and self.ClientItem.ClientFighter and self.ClientItem.ClientFighter.Player
+                    if wn and wp == player and equipped[wn] and equipped[wn].Charm then return equipped[wn].Charm end
+                    return origGC(self)
+                end
+            end
+            if ClientViewModel.GetWrap then
+                local origGW = ClientViewModel.GetWrap
+                ClientViewModel.GetWrap = function(self)
+                    local wn = self.ClientItem and self.ClientItem.Name
+                    local wp = self.ClientItem and self.ClientItem.ClientFighter and self.ClientItem.ClientFighter.Player
+                    if wn and wp == player and equipped[wn] and equipped[wn].Wrap then return equipped[wn].Wrap end
+                    return origGW(self)
+                end
+            end
+            local origNew = ClientViewModel.new
+            ClientViewModel.new = function(rd, ci)
+                local wp = ci.ClientFighter and ci.ClientFighter.Player
+                local wn = constructingWeapon or ci.Name
+                if wp == player and equipped[wn] then
+                    local RC = require(ReplicatedStorage.Modules.ReplicatedClass)
+                    local dk = RC:ToEnum("Data")
+                    rd[dk] = rd[dk] or {}
+                    local c = equipped[wn]
+                    if c.Skin then rd[dk][RC:ToEnum("Skin")] = c.Skin end
+                    if c.Charm then rd[dk][RC:ToEnum("Charm")] = c.Charm end
+                    if c.Wrap then rd[dk][RC:ToEnum("Wrap")] = c.Wrap end
+                end
+                local result = origNew(rd, ci)
+                if wp == player and equipped[wn] and equipped[wn].Wrap and result._UpdateWrap then
+                    result:_UpdateWrap()
+                    task.delay(0.1, function() if not result._destroyed then result:_UpdateWrap() end end)
+                end
+                return result
+            end
+        end
+        
+        local origGVI = ItemLibrary.GetViewModelImageFromWeaponData
+        ItemLibrary.GetViewModelImageFromWeaponData = function(self, wd, hr)
+            if not wd then return origGVI(self, wd, hr) end
+            local wn = wd.Name
+            if equipped[wn] and equipped[wn].Skin then
+                local si = self.ViewModels[equipped[wn].Skin.Name]
+                if si then return si[hr and "ImageHighResolution" or "Image"] or si.Image end
+            end
+            return origGVI(self, wd, hr)
+        end
+        
+        pcall(function()
+            local EmoteController = require(controllers:WaitForChild("EmoteController", 10))
+            if EmoteController and EmoteController.GetEmotes then
+                local origGE = EmoteController.GetEmotes
+                EmoteController.GetEmotes = function(self)
+                    local emotes = origGE(self)
+                    for name, cosmetic in pairs(CosmeticLibrary.Cosmetics) do
+                        if cosmetic and isNotFinisher(name) and (cosmetic.Type == "Dance" or cosmetic.Type == "Emote" or name:lower():find("dance") or name:lower():find("emote")) then
+                            if not emotes[name] then
+                                emotes[name] = {Name = name, Type = cosmetic.Type, ObjectID = cosmetic.ObjectID, Enum = cosmetic.Enum}
+                            end
+                        end
+                    end
+                    return emotes
+                end
+            end
+        end)
+        
+        pcall(function()
+            local ViewProfile = require(player.PlayerScripts.Modules.Pages.ViewProfile)
+            if ViewProfile and ViewProfile.Fetch then
+                local origF = ViewProfile.Fetch
+                ViewProfile.Fetch = function(self, tp) viewingProfile = tp; return origF(self, tp) end
+            end
+        end)
+        
+        loadConfig()
+    end)
+end
+
+local function runSkinChanger() end
+
+function Features.setUnlockAll(on) Features.unlockAllEnabled = on; if on then unlockRan = false; runUnlockAll() end end
+function Features.setSkinChanger(on) Features.skinChangerEnabled = on; if on then runSkinChanger() end end
+
+-- STAFF DETECTOR
+Features.staffDetectorEnabled = false
+local staffLoaded = false
+local function runStaffDetector()
+    if staffLoaded then return end; staffLoaded = true
+    shared.StaffDetectorLoading = false; autoload = true; autoleave = false
+    loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Ukrubojvo/Modules/main/StaffDetector.lua"))()
+end
+function Features.setStaffDetector(on) Features.staffDetectorEnabled = on; if on then staffLoaded = false; runStaffDetector() end end
+LP.CharacterAdded:Connect(function() if Features.staffDetectorEnabled then staffLoaded = false; runStaffDetector() end end)
+
+-- SPOOFER
+Features.spooferEnabled = false
+Features.spooferSettings = { victim=0, helper="", streak=67, elo=0, keys=67, verified=false }
+local spooferLoaded, spooferReloading = false, false
+local function runSpoofer()
+    if spooferLoaded then return end; spooferLoaded = true
+    local victimID = Features.spooferSettings.victim
+    if not victimID or victimID == 0 then victimID = LP.UserId end
+    getgenv().Config = {
+        victim = victimID, helper = Features.spooferSettings.helper or "",
+        level = 67, streak = Features.spooferSettings.streak or 67,
+        elo = Features.spooferSettings.elo or 0, keys = Features.spooferSettings.keys or 67,
+        premium = false, verified = Features.spooferSettings.verified or false,
+        unlockall = false, platform = "", join = "discord.gg/rivalscomp"
+    }
+    loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/ab95af5e8df41b1c817329fcd4e97840/raw/2865e050e0d160c7aa7e4e862f9cf59eed41ca2a/gistfile1.txt"))()
+end
+function Features.setSpoofer(on) Features.spooferEnabled = on; if on then spooferLoaded = false; runSpoofer() end end
+function Features.reloadSpoofer()
+    if not Features.spooferEnabled or spooferReloading then return end
+    spooferReloading = true; Features.setSpoofer(false); task.wait(0.5); Features.setSpoofer(true); task.wait(0.5); spooferReloading = false
+end
+
+-- DEVICE SPOOFER
+local SetControlsRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
+local function spoofDevice(device) SetControlsRemote:FireServer("MouseKeyboard"); task.wait(0.3); SetControlsRemote:FireServer(device) end
+local autoSpoofDevice = nil
+
+-- STRETCH RES
+Features.stretchResEnabled = false
+Features.stretchResValue = 0.81
+local stretchResConnection = nil
+function Features.setStretchRes(on)
+    Features.stretchResEnabled = on
+    if on then
+        if not stretchResConnection then
+            stretchResConnection = RunService.RenderStepped:Connect(function()
+                local resVal = 1 - Features.stretchResValue
+                Camera.CFrame = Camera.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, resVal, 0, 0, 0, 1)
+            end)
+        end
+    else
+        if stretchResConnection then stretchResConnection:Disconnect(); stretchResConnection = nil end
+    end
+end
+
+-- KEYBINDS
+local Keybinds = { aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"}, silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"}, esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"}, infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"}, flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"}, unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"} }
+local function keyName(kc) if kc == nil then return "None" end; if typeof(kc)=="EnumItem" then return kc.Name end; return tostring(kc):gsub("Enum%.KeyCode%.",""):gsub("Enum%.UserInputType%.","") end
+
+-- CONFIG SYSTEM (safe)
+local configFileName = "BoscoHub_Configs.json"
+local function getAllConfigs()
+    if not isfile or not readfile then return {} end
+    if not isfile(configFileName) then return {} end
+    local s, d = pcall(function() return HttpService:JSONDecode(readfile(configFileName)) end)
+    return (s and type(d)=="table") and d or {}
+end
+local function saveConfigsToFile(configs) if writefile then pcall(function() writefile(configFileName, HttpService:JSONEncode(configs)) end) end end
+local function saveConfig(name, overwrite)
+    local configs = getAllConfigs()
+    if configs[name] and not overwrite then return false, "Config exists!" end
+    local keybindsCopy = {}
+    for k, v in pairs(Keybinds) do
+        pcall(function() keybindsCopy[k] = { key = v.key.Name, holdMode = v.holdMode, label = v.label } end)
+    end
+    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, autoSpoofDevice=autoSpoofDevice, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=keybindsCopy }
+    saveConfigsToFile(configs); return true, "Saved!"
+end
+local function loadConfig(name)
+    local configs = getAllConfigs(); local data = configs[name]
+    if not data then return false, "Not found!" end
+    if data.esp ~= nil then Features.setESP(data.esp) end
+    if data.espSettings then for k, v in pairs(data.espSettings) do Features.espSettings[k] = v end end
+    if data.aimbot ~= nil then Features.setAimbot(data.aimbot) end
+    if data.aimbotSettings then for k, v in pairs(data.aimbotSettings) do Features.aimbotSettings[k] = v end end
+    if data.silentAim ~= nil then Features.setSilentAim(data.silentAim) end
+    if data.silentAimSettings then for k, v in pairs(data.silentAimSettings) do Features.silentAimSettings[k] = v end end
+    if data.infiniteJump ~= nil then Features.setInfiniteJump(data.infiniteJump) end
+    if data.flick ~= nil then Features.setFlick(data.flick) end
+    if data.flickSettings then for k, v in pairs(data.flickSettings) do Features.flickSettings[k] = v end end
+    if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end
+    if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end
+    if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end
+    if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end
+    if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
+    if data.autoSpoofDevice ~= nil then autoSpoofDevice = data.autoSpoofDevice end
+    if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end
+    if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
+    if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] then Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key; Keybinds[k].holdMode = v.holdMode end end end
+    return true, "Loaded!"
+end
+local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
+
+-- Auto-load config on join (safe)
+task.wait(1)
+pcall(function()
+    local saved = getAllConfigs()
+    if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
+        loadConfig(saved["__autoLoad"])
+    end
+end)
+
+-- Run skin changer after UI loads
+task.spawn(function()
+    task.wait(5)
+    if Features.skinChangerEnabled then runSkinChanger() end
+end)
+
+-- Auto execute on teleport (safe)
+pcall(function()
+    if queue_on_teleport then
+        local saved = getAllConfigs()
+        if saved["__autoLoadEnabled"] then
+            queue_on_teleport([[loadstring(game:HttpGet("https://raw.githubusercontent.com/shammanpok3-cmyk/Bosco-Hub-v1/refs/heads/main/Code.lua"))()]])
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════
+--  UI (Logo + All Pages)
+-- ═══════════════════════════════════════════════════════
+for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
+
+local C={bg=Color3.fromRGB(4,0,8),panel=Color3.fromRGB(10,2,16),row=Color3.fromRGB(16,4,22),sidebarBg=Color3.fromRGB(6,0,12),topBar=Color3.fromRGB(8,0,14),accent=Color3.fromRGB(140,30,255),accentBrt=Color3.fromRGB(180,80,255),accent2=Color3.fromRGB(255,60,120),activeDim=Color3.fromRGB(40,8,60),sep=Color3.fromRGB(100,20,160),text=Color3.fromRGB(255,255,255),textDim=Color3.fromRGB(170,130,200),sliderTrack=Color3.fromRGB(25,5,40),toggleOff=Color3.fromRGB(25,25,40)}
+local FONT=Enum.Font.Gotham;local FONT_MED=Enum.Font.GothamMedium;local FONT_BOL=Enum.Font.GothamBold
+local CR=UDim.new(0,8);local CR_SM=UDim.new(0,6);local CR_XL=UDim.new(0,14)
+
+local function mkCorner(p,r)local c=Instance.new("UICorner");c.CornerRadius=r or CR;c.Parent=p;return c end
+local function mkStroke(p,col,tr,th)local s=Instance.new("UIStroke");s.Color=col or C.sep;s.Transparency=tr or 0.5;s.Thickness=th or 1;s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;s.Parent=p;return s end
+local function mkPad(p,t,r,b,l)local x=Instance.new("UIPadding");x.PaddingTop=UDim.new(0,t or 12);x.PaddingRight=UDim.new(0,r or 12);x.PaddingBottom=UDim.new(0,b or 12);x.PaddingLeft=UDim.new(0,l or 12);x.Parent=p;return x end
+local function mkGradient(p,c1,c2)local g=Instance.new("UIGradient");g.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,c1 or C.accent),ColorSequenceKeypoint.new(1,c2 or C.accentBrt)});g.Parent=p;return g end
+local function mkLabel(props)local l=Instance.new("TextLabel");l.Name=props.Name or"Lbl";l.BackgroundTransparency=1;l.Font=props.Font or FONT;l.TextSize=props.TextSize or 13;l.TextColor3=props.TextColor or C.text;l.Text=props.Text or"";l.TextXAlignment=props.TextXAlignment or Enum.TextXAlignment.Left;l.TextYAlignment=Enum.TextYAlignment.Center;if props.Size then l.Size=props.Size end;if props.Position then l.Position=props.Position end;if props.LayoutOrder then l.LayoutOrder=props.LayoutOrder end;l.Parent=props.Parent;return l end
+local function mkSep(parent,lo)local l=Instance.new("Frame");l.Name="Sep";l.Size=UDim2.new(1,0,0,1);l.BackgroundColor3=C.sep;l.BackgroundTransparency=0.4;l.BorderSizePixel=0;l.LayoutOrder=lo or 0;l.Parent=parent;return l end
+
+local gui=Instance.new("ScreenGui");gui.Name="BoscoHub";gui.ResetOnSpawn=false;gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;gui.IgnoreGuiInset=true;gui.DisplayOrder=100;gui.Parent=PGui
+
+local function showToast(msg)
+    local t=gui:FindFirstChild("Toast");if t then t:Destroy()end
+    local toast=Instance.new("Frame");toast.Name="Toast";toast.BackgroundColor3=C.panel;toast.BorderSizePixel=0;toast.Size=UDim2.fromOffset(370,40);toast.Position=UDim2.new(0.5,0,1,-65);toast.AnchorPoint=Vector2.new(0.5,1);toast.ZIndex=200;toast.Parent=gui
+    mkCorner(toast,CR);mkStroke(toast,C.accent,0,1.5);mkGradient(toast,C.accent,C.accent2)
+    mkLabel({Parent=toast,Text=msg,TextSize=12,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.fromScale(1,1)})
+    task.delay(2.5,function()if toast.Parent then toast:Destroy()end end)
+end
+
+local root=Instance.new("Frame");root.Name="Root";root.BackgroundColor3=C.bg;root.BorderSizePixel=0;root.Size=UDim2.new(0,880,0,540)
+root.Position=UDim2.new(0.5,0,0.5,0);root.AnchorPoint=Vector2.new(0.5,0.5);root.ClipsDescendants=true;root.ZIndex=999;root.Visible=false;root.Parent=gui
+mkCorner(root,CR_XL);mkStroke(root,C.accent,0,2);mkGradient(root,C.bg,Color3.fromRGB(8,0,20))
+
+local topBar=Instance.new("Frame");topBar.Name="TopBar";topBar.BackgroundColor3=C.topBar;topBar.BorderSizePixel=0;topBar.Size=UDim2.new(1,0,0,48);topBar.ZIndex=10;topBar.Parent=root
+mkCorner(topBar,UDim.new(0,14))
+local tbBorder=Instance.new("Frame");tbBorder.Size=UDim2.new(1,0,0,2);tbBorder.Position=UDim2.new(0,0,1,-2);tbBorder.BackgroundColor3=C.accent;tbBorder.BorderSizePixel=0;tbBorder.ZIndex=11;tbBorder.Parent=topBar;mkGradient(tbBorder,C.accent,C.accent2)
+mkPad(topBar,0,16,0,16)
+
+local dragging,dragStart,dragOrigin=false,nil,nil
+topBar.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true;dragStart=i.Position;dragOrigin=root.Position;i.Changed:Connect(function()if i.UserInputState==Enum.UserInputState.End then dragging=false end end)end end)
+UIS.InputChanged:Connect(function(i)if dragging and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then local d=i.Position-dragStart;root.Position=UDim2.new(dragOrigin.X.Scale,dragOrigin.X.Offset+d.X,dragOrigin.Y.Scale,dragOrigin.Y.Offset+d.Y)end end)
+
+local wCtrl=Instance.new("Frame");wCtrl.BackgroundTransparency=1;wCtrl.Size=UDim2.fromOffset(60,16);wCtrl.Parent=topBar
+local wl=Instance.new("UIListLayout");wl.FillDirection=Enum.FillDirection.Horizontal;wl.Padding=UDim.new(0,7);wl.VerticalAlignment=Enum.VerticalAlignment.Center;wl.Parent=wCtrl
+local winClose,winMin
+for i,col in ipairs({Color3.fromRGB(255,70,70),Color3.fromRGB(255,180,50),Color3.fromRGB(60,220,80)})do local d=Instance.new("TextButton");d.Size=UDim2.fromOffset(14,14);d.BackgroundColor3=col;d.Text="";d.AutoButtonColor=false;mkCorner(d,UDim.new(1,0));d.Parent=wCtrl;if i==1 then winClose=d elseif i==2 then winMin=d end end
+
+local titleLabel=Instance.new("TextLabel");titleLabel.BackgroundTransparency=1;titleLabel.Text="BOSCO HUB V1";titleLabel.Font=FONT_BOL;titleLabel.TextSize=14;titleLabel.TextColor3=C.accentBrt;titleLabel.TextXAlignment=Enum.TextXAlignment.Center;titleLabel.Size=UDim2.new(1,-120,1,0);titleLabel.Position=UDim2.new(0,60,0,0);titleLabel.Parent=topBar
+
+local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Name="Body";body.Size=UDim2.new(1,0,1,-48);body.Position=UDim2.fromOffset(0,48);body.ZIndex=4;body.Parent=root
+local SW=200
+local sidebar=Instance.new("Frame");sidebar.BackgroundColor3=C.sidebarBg;sidebar.BorderSizePixel=0;sidebar.Size=UDim2.new(0,SW,1,0);sidebar.ZIndex=5;sidebar.Parent=body
+local sbLine=Instance.new("Frame");sbLine.Size=UDim2.new(0,2,1,0);sbLine.Position=UDim2.new(1,-2,0,0);sbLine.BackgroundColor3=C.accent;sbLine.BorderSizePixel=0;sbLine.Parent=sidebar;mkGradient(sbLine,C.accent,C.accent2)
+local sbScroll=Instance.new("ScrollingFrame");sbScroll.BackgroundTransparency=1;sbScroll.BorderSizePixel=0;sbScroll.Size=UDim2.fromScale(1,1);sbScroll.CanvasSize=UDim2.new(0,0,0,0);sbScroll.ScrollBarThickness=3;sbScroll.ScrollBarImageColor3=C.accent;sbScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;sbScroll.Parent=sidebar
+mkPad(sbScroll,12,10,12,10)
+local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,4);sbLL.SortOrder=Enum.SortOrder.LayoutOrder;sbLL.Parent=sbScroll
+
+-- Logo
+local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,100);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
+local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,2);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
+local logo=Instance.new("ImageLabel",brandBlock)
+logo.Size=UDim2.new(0,60,0,60);logo.BackgroundTransparency=1
+logo.Image="rbxassetid://97453625372680"
+logo.ScaleType=Enum.ScaleType.Fit
+logo.LayoutOrder=1
+mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
+mkLabel({Parent=brandBlock,Text="V1  |  by Bosco",Font=FONT_BOL,TextSize=10,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=3})
+
+local navBtns={};local activeNav=nil
+local function setNavActive(btn)if activeNav then activeNav.BackgroundColor3=Color3.fromRGB(0,0,0);activeNav.BackgroundTransparency=1;activeNav.TextColor3=C.textDim end;activeNav=btn;btn.BackgroundColor3=C.activeDim;btn.BackgroundTransparency=0;btn.TextColor3=C.accentBrt end
+local function mkNav(text,lo,onClick)local btn=Instance.new("TextButton");btn.Name=text:gsub(" ","");btn.LayoutOrder=lo;btn.Size=UDim2.new(1,0,0,32);btn.BackgroundColor3=Color3.fromRGB(0,0,0);btn.BackgroundTransparency=1;btn.Font=FONT_MED;btn.TextSize=12;btn.Text="  "..text;btn.TextColor3=C.textDim;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.sep,0.6,1);btn.Parent=sbScroll;navBtns[text]=btn;btn.MouseButton1Click:Connect(function()setNavActive(btn);if onClick then onClick()end end);return btn end
+local function mkNavHdr(text,lo)mkLabel({Parent=sbScroll,Text=text,Font=FONT_BOL,TextSize=9,TextColor=C.accent,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)})end
+
+local main=Instance.new("Frame");main.Name="Main";main.BackgroundColor3=C.panel;main.BorderSizePixel=0;main.Size=UDim2.new(1,-SW,1,0);main.Position=UDim2.fromOffset(SW,0);main.ZIndex=4;main.Parent=body
+mkCorner(main,UDim.new(0,8))
+local mainScroll=Instance.new("ScrollingFrame");mainScroll.BackgroundTransparency=1;mainScroll.BorderSizePixel=0;mainScroll.Size=UDim2.fromScale(1,1);mainScroll.CanvasSize=UDim2.new(0,0,0,0);mainScroll.ScrollBarThickness=3;mainScroll.ScrollBarImageColor3=C.accent;mainScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;mainScroll.Parent=main
+mkPad(mainScroll,18,18,18,18)
+local mainLL=Instance.new("UIListLayout");mainLL.Padding=UDim.new(0,12);mainLL.SortOrder=Enum.SortOrder.LayoutOrder;mainLL.Parent=mainScroll
+
+local function secHead(text,order)return mkLabel({Parent=mainScroll,Text=text:upper(),Font=FONT_BOL,TextSize=10,TextColor=C.accent,LayoutOrder=order,Size=UDim2.new(1,0,0,20)})end
+local function mkRow(title,lo,h)local f=Instance.new("Frame");f.Name=title;f.BackgroundColor3=C.row;f.BorderSizePixel=0;f.Size=UDim2.new(1,0,0,h or 54);f.LayoutOrder=lo;f.Parent=mainScroll;mkCorner(f,CR);mkStroke(f,C.sep,0.4,1);mkPad(f,12,14,12,14);return f end
+
+local function clearContent()
+    local toRemove = {}
+    for _, ch in ipairs(mainScroll:GetChildren()) do
+        if ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton") or ch:IsA("TextBox") or ch:IsA("ScrollingFrame") then
+            table.insert(toRemove, ch)
+        end
+    end
+    for _, ch in ipairs(toRemove) do ch:Destroy() end
+    mainScroll.CanvasPosition = Vector2.zero
+end
+
+local function createToggle(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-56,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,16)})
+    local track=Instance.new("TextButton");track.AnchorPoint=Vector2.new(1,0.5);track.Position=UDim2.new(1,0,0.5,0);track.Size=UDim2.fromOffset(48,24);track.Text="";track.AutoButtonColor=false;mkCorner(track,UDim.new(1,0));track.Parent=row
+    local knob=Instance.new("Frame");knob.Size=UDim2.fromOffset(18,18);knob.BorderSizePixel=0;mkCorner(knob,UDim.new(1,0));knob.Parent=track
+    local on=props.default==true
+    local function paint()for _,v in ipairs(track:GetChildren())do if v:IsA("UIGradient")then v:Destroy()end end;if on then mkGradient(track,C.accent,C.accentBrt);knob.Position=UDim2.new(1,-22,0.5,-9);knob.BackgroundColor3=Color3.fromRGB(255,255,255)else track.BackgroundColor3=C.toggleOff;knob.Position=UDim2.new(0,4,0.5,-9);knob.BackgroundColor3=Color3.fromRGB(180,180,200)end end
+    paint()
+    track.MouseButton1Click:Connect(function()on=not on;paint();TweenService:Create(knob,TweenInfo.new(0.15,Enum.EasingStyle.Quad),{Position=on and UDim2.new(1,-22,0.5,-9)or UDim2.new(0,4,0.5,-9)}):Play();if props.onChange then props.onChange(on)end end)
+    return row
+end
+
+local function createDualSlider(props)
+    local row=mkRow(props.title,props.layoutOrder,76)
+    mkLabel({Parent=row,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local textBox=Instance.new("TextBox");textBox.Size=UDim2.fromOffset(55,22);textBox.Position=UDim2.new(1,-55,0,0);textBox.BackgroundColor3=C.activeDim;textBox.TextColor3=C.text;textBox.Font=FONT_MED;textBox.TextSize=12;textBox.Text=tostring(props.default);mkCorner(textBox,CR_SM);mkStroke(textBox,C.accent,0,1);textBox.Parent=row
+    if props.desc then mkLabel({Parent=row,Text=props.desc,TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})end
+    local trk=Instance.new("Frame");trk.BackgroundColor3=C.sliderTrack;trk.Position=UDim2.fromOffset(0,44);trk.Size=UDim2.new(1,0,0,7);mkCorner(trk,UDim.new(1,0));trk.Parent=row
+    local fill=Instance.new("Frame");fill.Size=UDim2.fromScale((props.default-props.min)/(props.max-props.min),1);mkCorner(fill,UDim.new(1,0));fill.Parent=trk;mkGradient(fill,C.accent,C.accentBrt)
+    local hit=Instance.new("TextButton");hit.BackgroundTransparency=1;hit.Text="";hit.Size=UDim2.new(1,0,0,22);hit.Position=UDim2.fromOffset(0,36);hit.Parent=row
+    mkLabel({Parent=row,Text=tostring(props.min),TextSize=9,TextColor=C.textDim,Position=UDim2.fromOffset(0,56),Size=UDim2.fromOffset(30,14)})
+    mkLabel({Parent=row,Text=tostring(props.max),TextSize=9,TextColor=C.textDim,Position=UDim2.new(1,-30,0,56),Size=UDim2.fromOffset(30,14),TextXAlignment=Enum.TextXAlignment.Right})
+    local function updateValue(value)value=math.clamp(tonumber(value)or props.default,props.min,props.max);fill.Size=UDim2.fromScale((value-props.min)/(props.max-props.min),1);textBox.Text=tostring(math.floor(value*100)/100);if props.onChange then props.onChange(value)end end
+    local drag=false
+    hit.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=true;updateValue(props.min+((i.Position.X-trk.AbsolutePosition.X)/trk.AbsoluteSize.X)*(props.max-props.min))end end)
+    UIS.InputChanged:Connect(function(i)if drag then updateValue(props.min+((i.Position.X-trk.AbsolutePosition.X)/trk.AbsoluteSize.X)*(props.max-props.min))end end)
+    UIS.InputEnded:Connect(function()drag=false end)
+    textBox.FocusLost:Connect(function(ep)if ep then updateValue(tonumber(textBox.Text))end end)
+    updateValue(props.default)
+    return row
+end
+
+local function createCycleButton(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    mkLabel({Parent=row,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.6,0,0,18)})
+    mkLabel({Parent=row,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,14)})
+    local opts=props.options or{};local currentIndex=1
+    for i,o in ipairs(opts)do if o==props.default then currentIndex=i;break end end
+    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(120,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT;btn.TextSize=12;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";btn.TextColor3=C.accentBrt;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row
+    btn.MouseButton1Click:Connect(function()currentIndex=currentIndex+1;if currentIndex>#opts then currentIndex=1 end;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";if props.onChange then props.onChange(opts[currentIndex])end end)
+    return row
+end
+
+local function createActionRow(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-92,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,16)})
+    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(82,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT_MED;btn.TextSize=12;btn.Text=props.buttonText;btn.TextColor3=C.text;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row;mkGradient(btn,C.accent,Color3.fromRGB(100,20,200))
+    btn.MouseButton1Click:Connect(function()if props.onClick then props.onClick()end end)
+    return row
+end
+
+local listeningFor=nil;local kbBtns={}
+local function createKeybindRow(props)
+    local id=props.id;local bind=Keybinds[id]
+    local row=mkRow(bind.label,props.layoutOrder,54);row.Name=id
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-196,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=bind.label,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Name="CK",Text="Key: "..keyName(bind.key),TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,21),Size=UDim2.new(1,0,0,16)})
+    local hb=Instance.new("TextButton");hb.AnchorPoint=Vector2.new(1,0.5);hb.Position=UDim2.new(1,0,0.5,0);hb.Size=UDim2.fromOffset(72,26);hb.Font=FONT;hb.TextSize=11;hb.Text=bind.holdMode and"HOLD"or"TOGGLE";hb.BackgroundColor3=bind.holdMode and C.accent or Color3.fromRGB(35,8,50);hb.TextColor3=C.text;hb.AutoButtonColor=false;mkCorner(hb,CR_SM);hb.Parent=row;if bind.holdMode then mkGradient(hb,C.accent,C.accentBrt)end
+    hb.MouseButton1Click:Connect(function()bind.holdMode=not bind.holdMode;hb.Text=bind.holdMode and"HOLD"or"TOGGLE";hb.BackgroundColor3=bind.holdMode and C.accent or Color3.fromRGB(35,8,50)end)
+    local kb=Instance.new("TextButton");kb.AnchorPoint=Vector2.new(1,0.5);kb.Position=UDim2.new(1,-80,0.5,0);kb.Size=UDim2.fromOffset(72,26);kb.Font=FONT_MED;kb.TextSize=12;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35);kb.TextColor3=C.text;kb.AutoButtonColor=false;mkCorner(kb,CR_SM);mkStroke(kb,C.accent,0,1);kb.Parent=row;kbBtns[id]=kb
+    kb.MouseButton1Click:Connect(function()if listeningFor==id then listeningFor=nil;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35)else if listeningFor and kbBtns[listeningFor]then kbBtns[listeningFor].Text=keyName(Keybinds[listeningFor].key);kbBtns[listeningFor].BackgroundColor3=Color3.fromRGB(22,4,35)end;listeningFor=id;kb.Text="[press key]";kb.BackgroundColor3=C.activeDim end end)
+    return row
+end
+
+-- PAGES
+local function renderAimbot()
+    clearContent();local lo=1;local s=Features.aimbotSettings
+    secHead("🎯 Aimbot",lo);lo+=1
+    createToggle({title="Enable Aimbot",desc="Toggle aimbot on/off",layoutOrder=lo,default=Features.aimbotEnabled,onChange=function(on)Features.setAimbot(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Aimbot field of view",layoutOrder=lo,default=s.FOV,min=30,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Aim Speed",desc="Smoothness of aim",layoutOrder=lo,default=s.AimSpeed,min=1,max=50,onChange=function(v)s.AimSpeed=v end});lo+=1
+    createCycleButton({title="Target Part",desc="Body part to aim at",layoutOrder=lo,default=s.TargetPart,options={"Head","HumanoidRootPart","UpperTorso","LowerTorso"},onChange=function(v)s.TargetPart=v end});lo+=1
+    createCycleButton({title="Priority",desc="Target selection priority",layoutOrder=lo,default=s.TargetPriority,options={"FOV","Distance","Health"},onChange=function(v)s.TargetPriority=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only target visible enemies",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Ignore teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Prediction",desc="Predict enemy movement",layoutOrder=lo,default=s.Prediction,onChange=function(on)s.Prediction=on end});lo+=1
+    createToggle({title="Sticky Aim",desc="Stay locked on target",layoutOrder=lo,default=s.StickyAim,onChange=function(on)s.StickyAim=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+    createToggle({title="Require Right Click",desc="Only aim when right clicking",layoutOrder=lo,default=s.RequireRightClick,onChange=function(on)s.RequireRightClick=on end});lo+=1
+    createToggle({title="ADS Enabled",desc="Adjust aim speed when ADSing",layoutOrder=lo,default=s.ADSEnabled,onChange=function(on)s.ADSEnabled=on end});lo+=1
+    createDualSlider({title="ADS Multiplier %",desc="10% = fastest | 100% = normal | 200% = slowest",layoutOrder=lo,default=s.ADSMultiplier or 80,min=10,max=200,onChange=function(v)s.ADSMultiplier=v end});lo+=1
+    createToggle({title="Auto Fire",desc="Shoot automatically",layoutOrder=lo,default=s.AutoFire,onChange=function(on)s.AutoFire=on end});lo+=1
+    createToggle({title="Post-Shot Inertia",desc="Natural mouse drift after shooting",layoutOrder=lo,default=s.PostKillInertia or false,onChange=function(on)s.PostKillInertia=on end});lo+=1
+end
+
+local function renderSilentAim()
+    clearContent();local lo=1;local s=Features.silentAimSettings
+    secHead("🔇 Silent Aim",lo);lo+=1
+    createToggle({title="Enable Silent Aim",desc="Hit targets without aiming at them",layoutOrder=lo,default=Features.silentAimEnabled,onChange=function(on)Features.setSilentAim(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Silent aim field of view",layoutOrder=lo,default=s.FOV,min=50,max=1000,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum targeting range",layoutOrder=lo,default=s.MaxDistance,min=50,max=2000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createCycleButton({title="Hit Part",desc="Which body part to hit",layoutOrder=lo,default=s.HitPart,options={"Head","HumanoidRootPart","UpperTorso"},onChange=function(v)s.HitPart=v end});lo+=1
+    createToggle({title="Team Check",desc="Don't hit teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+end
+
+local function renderFlick()
+    clearContent();local lo=1;local s=Features.flickSettings
+    secHead("💨 Flick",lo);lo+=1
+    createToggle({title="Enable Flick",desc="Flick to nearest head and shoot",layoutOrder=lo,default=Features.flickEnabled,onChange=function(on)Features.setFlick(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Speed",desc="Flick speed multiplier",layoutOrder=lo,default=s.Speed,min=5,max=50,onChange=function(v)s.Speed=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+end
+
+local function renderInfiniteJump()
+    clearContent();local lo=1
+    secHead("🏃 Infinite Jump",lo);lo+=1
+    createToggle({title="Enable Infinite Jump",desc="Hold space to fly",layoutOrder=lo,default=Features.infiniteJumpEnabled,onChange=function(on)Features.setInfiniteJump(on)end});lo+=1
+end
+
+local function renderESP()
+    clearContent();local lo=1;local s=Features.espSettings
+    secHead("👁 ESP",lo);lo+=1
+    createToggle({title="Enable ESP",desc="See enemies through walls",layoutOrder=lo,default=Features.espEnabled,onChange=function(on)Features.setESP(on)end});lo+=1
+    createToggle({title="Box ESP",desc="Draw boxes around enemies",layoutOrder=lo,default=s.Box,onChange=function(on)s.Box=on;Features.setESPSetting("Box",on)end});lo+=1
+    createToggle({title="Filled Box",desc="Fill the ESP boxes",layoutOrder=lo,default=s.BoxFilled,onChange=function(on)s.BoxFilled=on;Features.setESPSetting("BoxFilled",on)end});lo+=1
+    createToggle({title="Name ESP",desc="Show enemy names",layoutOrder=lo,default=s.Name,onChange=function(on)s.Name=on;Features.setESPSetting("Name",on)end});lo+=1
+    createToggle({title="Distance ESP",desc="Show distance to enemies",layoutOrder=lo,default=s.Distance,onChange=function(on)s.Distance=on;Features.setESPSetting("Distance",on)end});lo+=1
+    createToggle({title="Team Check",desc="Only show enemies",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on;Features.setESPSetting("TeamCheck",on)end});lo+=1
+end
+
+local function renderUnlockAll()
+    clearContent();local lo=1
+    secHead("🎨 Cosmetics",lo);lo+=1
+    createActionRow({title="Unlock All Cosmetics",desc="Press to unlock all skins",layoutOrder=lo,buttonText="🔓 UNLOCK",onClick=function()Features.setUnlockAll(true);showToast("Unlocking...")end});lo+=1
+    createToggle({title="Auto Skin Changer",desc="Auto-load skin changer on join/teleport",layoutOrder=lo,default=Features.skinChangerEnabled,onChange=function(on)Features.setSkinChanger(on);if on then showToast("Skin changer will auto-load!")end end});lo+=1
+end
+
+local function renderStaffDetector()
+    clearContent();local lo=1
+    secHead("🛡 Staff Detector",lo);lo+=1
+    createToggle({title="Enable Staff Detector",desc="Warns when Rivals moderators join",layoutOrder=lo,default=Features.staffDetectorEnabled,onChange=function(on)Features.setStaffDetector(on);if on then showToast("Staff Detector active!")end end});lo+=1
+    createToggle({title="Auto Leave",desc="Instantly leave if mod detected",layoutOrder=lo,default=false,onChange=function(on)autoleave=on end});lo+=1
+end
+
+local function renderFun()
+    clearContent();local lo=1;local s=Features.spooferSettings
+    secHead("🎭 Spoofer",lo);lo+=1
+    createToggle({title="Enable Spoofer",desc="Impersonate another player",layoutOrder=lo,default=Features.spooferEnabled,onChange=function(on)Features.setSpoofer(on)end});lo+=1
+    local victimRow=mkRow("Victim UserID",lo,52);lo+=1
+    mkLabel({Parent=victimRow,Text="Victim UserID",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    mkLabel({Parent=victimRow,Text="0 = spoof as yourself",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
+    local victimInput=Instance.new("TextBox",victimRow)
+    victimInput.Size=UDim2.fromOffset(100,26);victimInput.Position=UDim2.new(1,-100,0.5,-13)
+    victimInput.Text=tostring(s.victim);victimInput.PlaceholderText="UserID"
+    victimInput.TextColor3=C.text;victimInput.BackgroundColor3=C.activeDim
+    victimInput.Font=FONT;victimInput.TextSize=12;victimInput.BorderSizePixel=0
+    mkCorner(victimInput,CR_SM);mkStroke(victimInput,C.accent,0,1)
+    victimInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(victimInput.Text) if num then s.victim=math.floor(num);Features.reloadSpoofer() end end end)
+    local streakRow=mkRow("Win Streak",lo,52);lo+=1
+    mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    mkLabel({Parent=streakRow,Text="Fake win streak number",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
+    local streakInput=Instance.new("TextBox",streakRow)
+    streakInput.Size=UDim2.fromOffset(100,26);streakInput.Position=UDim2.new(1,-100,0.5,-13)
+    streakInput.Text=tostring(s.streak);streakInput.PlaceholderText="Streak"
+    streakInput.TextColor3=C.text;streakInput.BackgroundColor3=C.activeDim
+    streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
+    mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
+    streakInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(streakInput.Text) if num then s.streak=math.floor(num);Features.reloadSpoofer() end end end)
+    createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.verified,onChange=function(on)s.verified=on;Features.reloadSpoofer()end});lo+=1
+    mkSep(mainScroll,lo);lo+=1
+    secHead("📱 Device Spoofer",lo);lo+=1
+    local devices={{"Mouse & Keyboard","MouseKeyboard"},{"Gamepad","Gamepad"},{"Mobile (Touch)","Touch"},{"VR","VR"}}
+    for _,device in ipairs(devices)do
+        createToggle({title=device[1],desc="Auto-spoof as "..device[1].." on respawn",layoutOrder=lo,default=autoSpoofDevice==device[2],onChange=function(on)if on then autoSpoofDevice=device[2];spoofDevice(device[2]);showToast("Auto-spoof: "..device[1])else autoSpoofDevice=nil;showToast("Auto-spoof OFF")end end})
+        lo+=1
+    end
+    mkSep(mainScroll,lo);lo+=1
+    secHead("📐 Stretch Resolution",lo);lo+=1
+    createToggle({title="Enable Stretch Res",desc="Makes enemies wider (easier to hit)",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
+    local stretchRow=mkRow("Stretch Value",lo,52);lo+=1
+    mkLabel({Parent=stretchRow,Text="Stretch Amount",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    mkLabel({Parent=stretchRow,Text="1.0 = normal | 0.0 = max stretch",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
+    local stretchInput=Instance.new("TextBox",stretchRow)
+    stretchInput.Size=UDim2.fromOffset(70,26);stretchInput.Position=UDim2.new(1,-70,0.5,-13)
+    stretchInput.Text=tostring(Features.stretchResValue);stretchInput.TextColor3=C.text
+    stretchInput.BackgroundColor3=C.activeDim;stretchInput.Font=FONT;stretchInput.TextSize=12;stretchInput.BorderSizePixel=0
+    mkCorner(stretchInput,CR_SM);mkStroke(stretchInput,C.accent,0,1)
+    stretchInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(stretchInput.Text) if num and num>=0 and num<=1 then Features.stretchResValue=num end end end)
+end
+
+local function renderConfig()
+    clearContent();local lo=1
+    secHead("📂 Config",lo);lo+=1
+    local selectedConfig=nil;local autoLoadConfig=nil
+    local savedConfigs=getAllConfigs()
+    if savedConfigs["__autoLoad"]then autoLoadConfig=savedConfigs["__autoLoad"]end
+    local selectedLabel=mkLabel({Parent=mainScroll,Text="Selected: None",Font=FONT_MED,TextSize=11,TextColor=C.accentBrt,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
+    local autoLoadLabel=mkLabel({Parent=mainScroll,Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set",Font=FONT_MED,TextSize=11,TextColor=Color3.fromRGB(255,200,50),LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
+    local listFrame=Instance.new("ScrollingFrame",mainScroll)
+    listFrame.Size=UDim2.new(1,0,0,150);listFrame.LayoutOrder=lo;lo+=1
+    listFrame.BackgroundTransparency=1;listFrame.BorderSizePixel=0;listFrame.CanvasSize=UDim2.new(0,0,0,0);listFrame.AutomaticCanvasSize=Enum.AutomaticSize.Y;listFrame.ScrollBarThickness=3;listFrame.ScrollBarImageColor3=C.accent
+    local listLL=Instance.new("UIListLayout",listFrame);listLL.Padding=UDim.new(0,4);listLL.SortOrder=Enum.SortOrder.LayoutOrder
+    local function refreshList()
+        for _,child in ipairs(listFrame:GetChildren())do if child:IsA("TextButton")then child:Destroy()end end
+        local configs=getAllConfigs();local found=false
+        for name in pairs(configs)do
+            if name:sub(1,2)~="__"then
+                local btn=Instance.new("TextButton",listFrame)
+                btn.Size=UDim2.new(1,0,0,32);btn.Text=(name==autoLoadConfig and"  ⭐ "or"  📁 ")..name
+                btn.Font=FONT_MED;btn.TextSize=12;btn.TextColor3=C.text;btn.TextXAlignment=Enum.TextXAlignment.Left
+                btn.BackgroundColor3=(selectedConfig==name)and C.accent or C.row;btn.BorderSizePixel=0;mkCorner(btn,CR_SM)
+                if selectedConfig==name then found=true end
+                btn.MouseButton1Click:Connect(function()selectedConfig=name;refreshList()end)
+            end
+        end
+        if not found then selectedConfig=nil end
+        selectedLabel.Text=selectedConfig and"Selected: "..selectedConfig or"Selected: None"
+        autoLoadLabel.Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set"
+    end
+    refreshList()
+    local nameInput=Instance.new("TextBox",mainScroll)
+    nameInput.Size=UDim2.new(1,0,0,34);nameInput.LayoutOrder=lo;lo+=1
+    nameInput.PlaceholderText="Config name...";nameInput.Text="";nameInput.TextColor3=C.text
+    nameInput.BackgroundColor3=C.activeDim;nameInput.Font=FONT;nameInput.TextSize=13;nameInput.BorderSizePixel=0
+    mkCorner(nameInput,CR_SM);mkStroke(nameInput,C.accent,0,1)
+    local btnRow1=Instance.new("Frame",mainScroll);btnRow1.BackgroundTransparency=1;btnRow1.Size=UDim2.new(1,0,0,34);btnRow1.LayoutOrder=lo;lo+=1
+    local btnLL1=Instance.new("UIListLayout",btnRow1);btnLL1.FillDirection=Enum.FillDirection.Horizontal;btnLL1.Padding=UDim.new(0,8)
+    local createBtn=Instance.new("TextButton",btnRow1)
+    createBtn.Size=UDim2.new(0.25,-6,1,0);createBtn.Text="✚ Create";createBtn.Font=FONT_BOL;createBtn.TextSize=11
+    createBtn.TextColor3=C.text;createBtn.BackgroundColor3=C.accent;createBtn.AutoButtonColor=false;createBtn.BorderSizePixel=0;mkCorner(createBtn,CR_SM)
+    createBtn.MouseButton1Click:Connect(function()
+        local name=nameInput.Text
+        if name==""then showToast("Enter a name!");return end
+        if getAllConfigs()[name]then showToast("Already exists!");return end
+        local ok,msg=saveConfig(name,false)
+        if ok then showToast("Created!");nameInput.Text="";refreshList()else showToast(msg)end
+    end)
+    local overwriteBtn=Instance.new("TextButton",btnRow1)
+    overwriteBtn.Size=UDim2.new(0.25,-6,1,0);overwriteBtn.Text="♻ Overwrite";overwriteBtn.Font=FONT_BOL;overwriteBtn.TextSize=11
+    overwriteBtn.TextColor3=C.text;overwriteBtn.BackgroundColor3=Color3.fromRGB(255,140,0);overwriteBtn.AutoButtonColor=false;overwriteBtn.BorderSizePixel=0;mkCorner(overwriteBtn,CR_SM)
+    overwriteBtn.MouseButton1Click:Connect(function()
+        local name=selectedConfig or nameInput.Text
+        if name==""then showToast("Select or enter name!");return end
+        local ok,msg=saveConfig(name,true)
+        if ok then showToast("Saved!");refreshList()else showToast(msg)end
+    end)
+    local loadBtn=Instance.new("TextButton",btnRow1)
+    loadBtn.Size=UDim2.new(0.25,-6,1,0);loadBtn.Text="📂 Load";loadBtn.Font=FONT_BOL;loadBtn.TextSize=11
+    loadBtn.TextColor3=C.text;loadBtn.BackgroundColor3=Color3.fromRGB(40,140,40);loadBtn.AutoButtonColor=false;loadBtn.BorderSizePixel=0;mkCorner(loadBtn,CR_SM)
+    loadBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        local ok,msg=loadConfig(selectedConfig);showToast(msg)
+    end)
+    local deleteBtn=Instance.new("TextButton",btnRow1)
+    deleteBtn.Size=UDim2.new(0.25,-6,1,0);deleteBtn.Text="🗑 Delete";deleteBtn.Font=FONT_BOL;deleteBtn.TextSize=11
+    deleteBtn.TextColor3=C.text;deleteBtn.BackgroundColor3=Color3.fromRGB(200,50,50);deleteBtn.AutoButtonColor=false;deleteBtn.BorderSizePixel=0;mkCorner(deleteBtn,CR_SM)
+    deleteBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        local ok,msg=deleteConfig(selectedConfig)
+        if ok then
+            if selectedConfig==autoLoadConfig then autoLoadConfig=nil;local c=getAllConfigs();c["__autoLoad"]=nil;saveConfigsToFile(c)end
+            selectedConfig=nil;refreshList();showToast("Deleted!")
+        else showToast(msg)end
+    end)
+    local btnRow2=Instance.new("Frame",mainScroll);btnRow2.BackgroundTransparency=1;btnRow2.Size=UDim2.new(1,0,0,34);btnRow2.LayoutOrder=lo;lo+=1
+    local btnLL2=Instance.new("UIListLayout",btnRow2);btnLL2.FillDirection=Enum.FillDirection.Horizontal;btnLL2.Padding=UDim.new(0,8)
+    local autoBtn=Instance.new("TextButton",btnRow2)
+    autoBtn.Size=UDim2.new(0.5,-4,1,0);autoBtn.Text="⭐ Set Auto Load";autoBtn.Font=FONT_BOL;autoBtn.TextSize=11
+    autoBtn.TextColor3=C.text;autoBtn.BackgroundColor3=Color3.fromRGB(255,200,50);autoBtn.AutoButtonColor=false;autoBtn.BorderSizePixel=0;mkCorner(autoBtn,CR_SM)
+    autoBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        autoLoadConfig=selectedConfig;local c=getAllConfigs();c["__autoLoad"]=selectedConfig;saveConfigsToFile(c)
+        refreshList();showToast("Set!")
+    end)
+    local clearBtn=Instance.new("TextButton",btnRow2)
+    clearBtn.Size=UDim2.new(0.5,-4,1,0);clearBtn.Text="❌ Clear";clearBtn.Font=FONT_BOL;clearBtn.TextSize=11
+    clearBtn.TextColor3=C.text;clearBtn.BackgroundColor3=Color3.fromRGB(150,50,50);clearBtn.AutoButtonColor=false;clearBtn.BorderSizePixel=0;mkCorner(clearBtn,CR_SM)
+    clearBtn.MouseButton1Click:Connect(function()
+        autoLoadConfig=nil;local c=getAllConfigs();c["__autoLoad"]=nil;saveConfigsToFile(c)
+        refreshList();showToast("Cleared!")
+    end)
+    mkSep(mainScroll,lo);lo+=1
+    secHead("🔄 Auto Load Toggle",lo);lo+=1
+    local autoLoadFrame=Instance.new("Frame",mainScroll);autoLoadFrame.Size=UDim2.new(1,0,0,40);autoLoadFrame.LayoutOrder=lo
+    autoLoadFrame.BackgroundColor3=C.row;autoLoadFrame.BorderSizePixel=0;mkCorner(autoLoadFrame,CR_SM);mkStroke(autoLoadFrame,C.sep,0.4,1);mkPad(autoLoadFrame,8,14,8,14)
+    mkLabel({Parent=autoLoadFrame,Text="Enable Auto Load on Join",Font=FONT_MED,TextSize=12,TextColor=C.text,Size=UDim2.new(0,220,1,0)})
+    local autoLoadTrack=Instance.new("TextButton",autoLoadFrame);autoLoadTrack.Size=UDim2.new(0,44,0,22);autoLoadTrack.AnchorPoint=Vector2.new(1,0.5);autoLoadTrack.Position=UDim2.new(1,0,0.5,0);autoLoadTrack.Text="";autoLoadTrack.BackgroundColor3=C.toggleOff;autoLoadTrack.BorderSizePixel=0;mkCorner(autoLoadTrack,UDim.new(1,0))
+    local autoLoadKnob=Instance.new("Frame",autoLoadTrack);autoLoadKnob.Size=UDim2.new(0,16,0,16);autoLoadKnob.Position=UDim2.new(0,3,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(180,180,200);autoLoadKnob.BorderSizePixel=0;mkCorner(autoLoadKnob,UDim.new(1,0))
+    local autoLoadEnabled=(savedConfigs["__autoLoadEnabled"]==true)
+    if autoLoadEnabled then mkGradient(autoLoadTrack,C.accent,C.accentBrt);autoLoadKnob.Position=UDim2.new(1,-19,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(255,255,255)end
+    autoLoadTrack.MouseButton1Click:Connect(function()
+        autoLoadEnabled=not autoLoadEnabled;local c=getAllConfigs()
+        if autoLoadEnabled then
+            if not autoLoadConfig then showToast("Set a config first!");autoLoadEnabled=false;return end
+            mkGradient(autoLoadTrack,C.accent,C.accentBrt);autoLoadKnob.Position=UDim2.new(1,-19,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(255,255,255);c["__autoLoadEnabled"]=true;showToast("Auto-load ON!")
+        else
+            autoLoadTrack.BackgroundColor3=C.toggleOff
+            for _,v in ipairs(autoLoadTrack:GetChildren())do if v:IsA("UIGradient")then v:Destroy()end end
+            autoLoadKnob.Position=UDim2.new(0,3,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(180,180,200);c["__autoLoadEnabled"]=nil;showToast("Auto-load OFF!")
+        end
+        saveConfigsToFile(c)
+    end)
+end
+
+local function renderKeybinds()
+    clearContent();local lo=1
+    secHead("⌨ Keybinds",lo);lo+=1
+    for id,bind in pairs(Keybinds)do createKeybindRow({id=id,layoutOrder=lo});lo+=1 end
+    createActionRow({title="Reset All Keybinds",desc="Restore defaults",layoutOrder=lo,buttonText="↺ Reset",onClick=function()
+        Keybinds={aimbot={key=Enum.KeyCode.Q,holdMode=false,label="Aimbot"},silentAim={key=Enum.KeyCode.T,holdMode=false,label="Silent Aim"},esp={key=Enum.KeyCode.Z,holdMode=false,label="ESP"},infiniteJump={key=Enum.KeyCode.X,holdMode=false,label="Inf Jump"},flick={key=Enum.KeyCode.F,holdMode=false,label="Flick"},unlockAll={key=Enum.KeyCode.U,holdMode=false,label="Unlock All"}}
+        renderKeybinds();showToast("Keybinds reset!")
+    end});lo+=1
+end
+
+-- NAVIGATION
+mkNavHdr("🎯 COMBAT",1)
+mkNav("Aimbot",2,renderAimbot)
+mkNav("Silent Aim",3,renderSilentAim)
+mkNav("Flick",4,renderFlick)
+mkSep(sbScroll,5)
+mkNavHdr("🏃 MOVEMENT",6)
+mkNav("Infinite Jump",7,renderInfiniteJump)
+mkSep(sbScroll,8)
+mkNavHdr("👁 VISUALS",9)
+mkNav("ESP",10,renderESP)
+mkSep(sbScroll,11)
+mkNavHdr("🎨 COSMETICS",12)
+mkNav("Unlock All",13,renderUnlockAll)
+mkSep(sbScroll,14)
+mkNavHdr("🛡 PROTECTION",15)
+mkNav("Staff Detector",16,renderStaffDetector)
+mkSep(sbScroll,17)
+mkNavHdr("🎭 FUN",18)
+mkNav("Spoofer",19,renderFun)
+mkSep(sbScroll,20)
+mkNavHdr("⚙ SETTINGS",21)
+mkNav("Config",22,renderConfig)
+mkNav("Keybinds",23,renderKeybinds)
+
+renderAimbot()
+if navBtns["Aimbot"]then setNavActive(navBtns["Aimbot"])end
+
+-- MENU TOGGLE & KEYBINDS
+local menuOpen=false
+local function toggleMenu()menuOpen=not menuOpen;root.Visible=menuOpen end
+winClose.MouseButton1Click:Connect(function()menuOpen=false;root.Visible=false end)
+winMin.MouseButton1Click:Connect(function()menuOpen=false;root.Visible=false end)
+
+UIS.InputBegan:Connect(function(input,gp)
+    if gp then return end
+    if input.KeyCode==Enum.KeyCode.RightShift or input.KeyCode==Enum.KeyCode.RightControl then toggleMenu()end
+    if listeningFor then
+        local kb=kbBtns[listeningFor]
+        if kb then local bind=Keybinds[listeningFor]
+            if bind then bind.key=input.KeyCode;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35);listeningFor=nil end
+        end
+        return
+    end
+    for id,bind in pairs(Keybinds)do
+        if input.KeyCode==bind.key and not bind.holdMode then
+            if id=="aimbot"then Features.setAimbot(not Features.aimbotEnabled)end
+            if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
+            if id=="esp"then Features.setESP(not Features.espEnabled)end
+            if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
+            if id=="flick"then doFlick()end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
+        end
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    for id,bind in pairs(Keybinds)do
+        if input.KeyCode==bind.key and bind.holdMode then
+            if id=="aimbot"then Features.setAimbot(not Features.aimbotEnabled)end
+            if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
+            if id=="esp"then Features.setESP(not Features.espEnabled)end
+            if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
+            if id=="flick"then doFlick()end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
+        end
+    end
+end)
+
+print("Bosco Hub V1 loaded!")
+showToast("Bosco Hub V1 loaded!")
