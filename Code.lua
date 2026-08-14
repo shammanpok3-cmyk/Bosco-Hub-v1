@@ -112,7 +112,7 @@ function Features.setESPSetting(k,v) Features.espSettings[k]=v; if Features.espE
 Players.PlayerRemoving:Connect(removeESP)
 LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
 
--- SILENT AIM (Raycast Hook)
+-- SILENT AIM (Precise Raycast Hook)
 Features.silentAimEnabled = false
 Features.silentAimSettings = { FOV=300, MaxDistance=500, HitPart="Head", TeamCheck=true, ShowFOV=true }
 local silentAimHooked = false
@@ -131,28 +131,50 @@ local function setupSilentAim()
     utilityModule.Raycast = function(self, origin, direction, maxDistance, ...)
         if not Features.silentAimEnabled then return originalRaycast(self, origin, direction, maxDistance, ...) end
         if type(maxDistance) ~= "number" or maxDistance < 100 then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        
         local cam = Camera; if not cam then return originalRaycast(self, origin, direction, maxDistance, ...) end
         local mp = UIS:GetMouseLocation(); local center = Vector2.new(mp.X, mp.Y)
         local bestPart, bestD = nil, Features.silentAimSettings.FOV
+        
         for _, entity in CollectionService:GetTagged("Entity") do
             if entity == LP.Character then continue end
             local player = Players:GetPlayerFromCharacter(entity)
             if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
             local hum = entity:FindFirstChildOfClass("Humanoid")
             if hum and hum.Health <= 0 then continue end
-            local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
+            
+            local part
+            local hitPartName = Features.silentAimSettings.HitPart
+            if hitPartName == "Head" then part = entity:FindFirstChild("Head")
+            elseif hitPartName == "HumanoidRootPart" then part = entity:FindFirstChild("HumanoidRootPart")
+            elseif hitPartName == "UpperTorso" then part = entity:FindFirstChild("UpperTorso")
+            else part = entity:FindFirstChild(hitPartName) end
+            
             if not part or not part:IsA("BasePart") then continue end
             if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
+            
             local sp, onScreen = cam:WorldToViewportPoint(part.Position)
             if not onScreen then continue end
             local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
             if d < bestD then bestD = d; bestPart = part end
         end
+        
         if not bestPart then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        
         local targetPos = bestPart.Position
+        
+        if Features.aimbotSettings.Prediction then
+            local vel = bestPart.AssemblyLinearVelocity
+            if vel.Magnitude > 0.5 then
+                local dist = (origin - targetPos).Magnitude
+                targetPos = targetPos + (vel * (dist / 450) * 0.3)
+            end
+        end
+        
         local dir = (targetPos - origin).Unit
         local dist = (targetPos - origin).Magnitude
         if dist > maxDistance then dist = maxDistance; targetPos = origin + (dir * maxDistance) end
+        
         return { Position=targetPos, Distance=dist, Instance=bestPart, Material=bestPart.Material, Normal=-dir }
     end
     silentAimHooked = true
@@ -181,7 +203,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- AIMBOT
+-- AIMBOT (No Target Indicator)
 Features.aimbotEnabled = false
 Features.aimbotSettings = { FOV=120, AimSpeed=15, TargetPart="Head", ShowFOV=true, MaxDistance=500, WallCheck=true, TeamCheck=true, Prediction=true, StickyAim=true, StickyTime=1.5, TargetPriority="FOV", AutoFire=false, AutoFireDelay=0.100, AutoFireHold=false, RequireRightClick=true, ADSEnabled=true, ADSMultiplier=80, PostKillInertia=true }
 local function getAdaptiveSpeed(baseSpeed)
@@ -193,12 +215,7 @@ local function getAdaptiveSpeed(baseSpeed)
     end
     return baseSpeed * multiplier * 5
 end
-local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle, targetIndicator = nil, nil, 0, nil, nil, nil, nil
-local function createTargetIndicator()
-    if targetIndicator then return end
-    targetIndicator=Instance.new("BillboardGui"); targetIndicator.Name="BHTarget"; targetIndicator.Size=UDim2.new(0,24,0,24); targetIndicator.AlwaysOnTop=true; targetIndicator.Enabled=false; targetIndicator.Parent=PGui
-    local f=Instance.new("Frame",targetIndicator); f.Size=UDim2.new(1,0,1,0); f.BackgroundColor3=Color3.fromRGB(255,50,50); f.BackgroundTransparency=0.3; f.BorderSizePixel=0; Instance.new("UICorner",f).CornerRadius=UDim.new(1,0)
-end
+local lockedTarget, targetPlayer, lockTime, onTargetTime, aimbotConnection, fovCircle = nil, nil, 0, nil, nil, nil
 local function updateFOVCircle()
     if not hasDrawing then return end
     if not Features.aimbotSettings.ShowFOV then if fovCircle then fovCircle.Visible=false end; return end
@@ -299,24 +316,17 @@ end
 local function aimbotRenderStep()
     if not Features.aimbotEnabled then if fovCircle then fovCircle.Visible=false end; return end
     local char = LP.Character
-    if not char or not char:FindFirstChildOfClass("Humanoid") or char:FindFirstChildOfClass("Humanoid").Health <= 0 then
-        if targetIndicator then targetIndicator.Enabled=false end; return
-    end
+    if not char or not char:FindFirstChildOfClass("Humanoid") or char:FindFirstChildOfClass("Humanoid").Health <= 0 then return end
     updateFOVCircle()
     if Features.aimbotSettings.RequireRightClick and not UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        lockedTarget=nil; targetPlayer=nil; onTargetTime=nil
-        if targetIndicator then targetIndicator.Enabled=false end; return
+        lockedTarget=nil; targetPlayer=nil; onTargetTime=nil; return
     end
     local targetPart,targetScreenPos=getBestTarget()
-    if targetPart and targetPart.Parent then
-        if not targetIndicator then createTargetIndicator() end
-        if targetIndicator then targetIndicator.Enabled=true; targetIndicator.Adornee=targetPart end
-    elseif targetIndicator then targetIndicator.Enabled=false end
     if not targetScreenPos then return end
     moveMouseToTarget(targetScreenPos); handleAutoFire(targetScreenPos)
 end
 local function startAimbotLoop() if aimbotConnection then return end; aimbotConnection=RunService.RenderStepped:Connect(aimbotRenderStep) end
-local function stopAimbotLoop() if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection=nil end; lockedTarget=nil; targetPlayer=nil; onTargetTime=nil; mouse1release(); if fovCircle then fovCircle.Visible=false end; if targetIndicator then targetIndicator.Enabled=false end end
+local function stopAimbotLoop() if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection=nil end; lockedTarget=nil; targetPlayer=nil; onTargetTime=nil; mouse1release(); if fovCircle then fovCircle.Visible=false end end
 function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbotLoop() else stopAimbotLoop() end end
 
 -- FLICK (Speed Controlled)
