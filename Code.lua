@@ -112,72 +112,75 @@ function Features.setESPSetting(k,v) Features.espSettings[k]=v; if Features.espE
 Players.PlayerRemoving:Connect(removeESP)
 LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
 
--- SILENT AIM (Precise Raycast Hook)
-Features.silentAimEnabled = false
-Features.silentAimSettings = { FOV=300, MaxDistance=500, HitPart="Head", TeamCheck=true, ShowFOV=true }
+-- SILENT AIM (Proven Method)
+getgenv().Config = {
+    HitPart = "Head",
+    FOVRadius = 300,
+    ShowFOV = true
+}
+
 local silentAimHooked = false
-local originalRaycast = nil
 local silentFovCircle = nil
 
 local function setupSilentAim()
     if silentAimHooked then return end
-    local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
-    if not modules then return end
-    local utility = modules:FindFirstChild("Utility")
-    if not utility then return end
-    local utilityModule = require(utility)
-    if not utilityModule or not utilityModule.Raycast then return end
-    originalRaycast = utilityModule.Raycast
-    utilityModule.Raycast = function(self, origin, direction, maxDistance, ...)
-        if not Features.silentAimEnabled then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        if type(maxDistance) ~= "number" or maxDistance < 100 then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        
-        local cam = Camera; if not cam then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        local mp = UIS:GetMouseLocation(); local center = Vector2.new(mp.X, mp.Y)
-        local bestPart, bestD = nil, Features.silentAimSettings.FOV
-        
-        for _, entity in CollectionService:GetTagged("Entity") do
-            if entity == LP.Character then continue end
-            local player = Players:GetPlayerFromCharacter(entity)
-            if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
-            local hum = entity:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health <= 0 then continue end
-            
-            local part
-            local hitPartName = Features.silentAimSettings.HitPart
-            if hitPartName == "Head" then part = entity:FindFirstChild("Head")
-            elseif hitPartName == "HumanoidRootPart" then part = entity:FindFirstChild("HumanoidRootPart")
-            elseif hitPartName == "UpperTorso" then part = entity:FindFirstChild("UpperTorso")
-            else part = entity:FindFirstChild(hitPartName) end
-            
-            if not part or not part:IsA("BasePart") then continue end
-            if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
-            
-            local sp, onScreen = cam:WorldToViewportPoint(part.Position)
-            if not onScreen then continue end
-            local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-            if d < bestD then bestD = d; bestPart = part end
-        end
-        
-        if not bestPart then return originalRaycast(self, origin, direction, maxDistance, ...) end
-        
-        local targetPos = bestPart.Position
-        
-        if Features.aimbotSettings.Prediction then
-            local vel = bestPart.AssemblyLinearVelocity
-            if vel.Magnitude > 0.5 then
-                local dist = (origin - targetPos).Magnitude
-                targetPos = targetPos + (vel * (dist / 450) * 0.3)
-            end
-        end
-        
-        local dir = (targetPos - origin).Unit
-        local dist = (targetPos - origin).Magnitude
-        if dist > maxDistance then dist = maxDistance; targetPos = origin + (dir * maxDistance) end
-        
-        return { Position=targetPos, Distance=dist, Instance=bestPart, Material=bestPart.Material, Normal=-dir }
-    end
     silentAimHooked = true
+    
+    pcall(function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local Utility = require(ReplicatedStorage.Modules.Utility)
+        local originalRaycast = Utility.Raycast
+        
+        local function findTarget()
+            local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            local bestPart = nil
+            local bestDist = Features.silentAimSettings.FOV
+            
+            for _, entity in CollectionService:GetTagged("Entity") do
+                if entity == LP.Character then continue end
+                local player = Players:GetPlayerFromCharacter(entity)
+                if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
+                local hum = entity:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health <= 0 then continue end
+                local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
+                if not part or not part:IsA("BasePart") then continue end
+                
+                if Features.silentAimSettings.MaxDistance and (Camera.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
+                
+                local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if not onScreen then continue end
+                local d = (center - Vector2.new(sp.X, sp.Y)).Magnitude
+                if d < bestDist then
+                    bestDist = d
+                    bestPart = part
+                end
+            end
+            return bestPart
+        end
+        
+        Utility.Raycast = function(self, origin, direction, maxDistance, ...)
+            if not Features.silentAimEnabled then return originalRaycast(self, origin, direction, maxDistance, ...) end
+            if type(maxDistance) ~= "number" or maxDistance < 100 then return originalRaycast(self, origin, direction, maxDistance, ...) end
+            
+            local targetPart = findTarget()
+            if not targetPart then return originalRaycast(self, origin, direction, maxDistance, ...) end
+            
+            local targetPos = targetPart.Position
+            local dir = (targetPos - origin).Unit
+            local dist = (targetPos - origin).Magnitude
+            if dist > maxDistance then
+                dist = maxDistance
+                targetPos = origin + (dir * maxDistance)
+            end
+            return {
+                Position = targetPos,
+                Distance = dist,
+                Instance = targetPart,
+                Material = targetPart.Material,
+                Normal = -dir
+            }
+        end
+    end)
 end
 
 function Features.setSilentAim(on)
@@ -190,14 +193,13 @@ RunService.RenderStepped:Connect(function()
     if Features.silentAimEnabled and Features.silentAimSettings.ShowFOV then
         if not silentFovCircle then
             silentFovCircle = Drawing.new("Circle")
-            silentFovCircle.Thickness = 1.2; silentFovCircle.NumSides = 100
-            silentFovCircle.Filled = false; silentFovCircle.ZIndex = 999; silentFovCircle.Transparency = 0.3
-            silentFovCircle.Color = Color3.fromRGB(100, 200, 255)
+            silentFovCircle.Thickness = 1; silentFovCircle.NumSides = 100
+            silentFovCircle.Filled = false; silentFovCircle.ZIndex = 999
+            silentFovCircle.Color = Color3.fromRGB(255, 255, 255)
         end
         silentFovCircle.Visible = true
+        silentFovCircle.Position = Camera.ViewportSize / 2
         silentFovCircle.Radius = Features.silentAimSettings.FOV
-        local mp = UIS:GetMouseLocation()
-        silentFovCircle.Position = Vector2.new(mp.X, mp.Y)
     elseif silentFovCircle then
         silentFovCircle.Visible = false
     end
