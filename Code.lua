@@ -112,68 +112,50 @@ function Features.setESPSetting(k,v) Features.espSettings[k]=v; if Features.espE
 Players.PlayerRemoving:Connect(removeESP)
 LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
 
--- SILENT AIM (Gun Hook Method)
+-- SILENT AIM (Raycast Hook)
 Features.silentAimEnabled = false
 Features.silentAimSettings = { FOV=300, MaxDistance=500, HitPart="Head", TeamCheck=true, ShowFOV=true }
 local silentAimHooked = false
+local originalRaycast = nil
 local silentFovCircle = nil
 
 local function setupSilentAim()
     if silentAimHooked then return end
-    silentAimHooked = true
-    
-    pcall(function()
-        local Gun = require(LP.PlayerScripts.Modules.ItemTypes.Gun)
-        local Utility = require(game:GetService("ReplicatedStorage").Modules.Utility)
-        local originalStartShooting = Gun.StartShooting
-        
-        Gun.StartShooting = function(self, ...)
-            local results = {originalStartShooting(self, ...)}
-            
-            if not self.ClientFighter or not self.ClientFighter.IsLocalPlayer then
-                return unpack(results)
-            end
-            
-            if not Features.silentAimEnabled then
-                return unpack(results)
-            end
-            
-            local shotData = results[3]
-            if not shotData or typeof(shotData) ~= "table" then
-                return unpack(results)
-            end
-            
-            local cam = Camera
-            if not cam then return unpack(results) end
-            
-            local mp = UIS:GetMouseLocation()
-            local center = Vector2.new(mp.X, mp.Y)
-            local bestPart, bestDist = nil, Features.silentAimSettings.FOV
-            
-            for _, entity in CollectionService:GetTagged("Entity") do
-                if entity == LP.Character then continue end
-                local player = Players:GetPlayerFromCharacter(entity)
-                if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
-                local hum = entity:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health <= 0 then continue end
-                local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
-                if not part or not part:IsA("BasePart") then continue end
-                if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
-                local sp, onScreen = cam:WorldToViewportPoint(part.Position)
-                if not onScreen then continue end
-                local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
-                if d < bestDist then bestDist = d; bestPart = part end
-            end
-            
-            if not bestPart then return unpack(results) end
-            
-            local headPos = bestPart.Position
-            local origin = cam.CFrame.Position
-            results[3] = Utility:EncodeCFrame(CFrame.new(origin, headPos))
-            
-            return unpack(results)
+    local modules = game:GetService("ReplicatedStorage"):FindFirstChild("Modules")
+    if not modules then return end
+    local utility = modules:FindFirstChild("Utility")
+    if not utility then return end
+    local utilityModule = require(utility)
+    if not utilityModule or not utilityModule.Raycast then return end
+    originalRaycast = utilityModule.Raycast
+    utilityModule.Raycast = function(self, origin, direction, maxDistance, ...)
+        if not Features.silentAimEnabled then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        if type(maxDistance) ~= "number" or maxDistance < 100 then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        local cam = Camera; if not cam then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        local mp = UIS:GetMouseLocation(); local center = Vector2.new(mp.X, mp.Y)
+        local bestPart, bestD = nil, Features.silentAimSettings.FOV
+        for _, entity in CollectionService:GetTagged("Entity") do
+            if entity == LP.Character then continue end
+            local player = Players:GetPlayerFromCharacter(entity)
+            if Features.silentAimSettings.TeamCheck and isTeammate(player) then continue end
+            local hum = entity:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health <= 0 then continue end
+            local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
+            if not part or not part:IsA("BasePart") then continue end
+            if (cam.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
+            local sp, onScreen = cam:WorldToViewportPoint(part.Position)
+            if not onScreen then continue end
+            local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+            if d < bestD then bestD = d; bestPart = part end
         end
-    end)
+        if not bestPart then return originalRaycast(self, origin, direction, maxDistance, ...) end
+        local targetPos = bestPart.Position
+        local dir = (targetPos - origin).Unit
+        local dist = (targetPos - origin).Magnitude
+        if dist > maxDistance then dist = maxDistance; targetPos = origin + (dir * maxDistance) end
+        return { Position=targetPos, Distance=dist, Instance=bestPart, Material=bestPart.Material, Normal=-dir }
+    end
+    silentAimHooked = true
 end
 
 function Features.setSilentAim(on)
@@ -242,7 +224,8 @@ local function getPredictedPosition(part)
             end
         end
     end
-    return pos + (vel * (distance / bulletSpeed))
+    local timeToTarget = distance / bulletSpeed
+    return pos + (vel * timeToTarget * 0.4)
 end
 local function getBestTarget()
     local cam=Camera; if not cam then return nil,nil end
@@ -336,7 +319,7 @@ local function startAimbotLoop() if aimbotConnection then return end; aimbotConn
 local function stopAimbotLoop() if aimbotConnection then aimbotConnection:Disconnect(); aimbotConnection=nil end; lockedTarget=nil; targetPlayer=nil; onTargetTime=nil; mouse1release(); if fovCircle then fovCircle.Visible=false end; if targetIndicator then targetIndicator.Enabled=false end end
 function Features.setAimbot(on) Features.aimbotEnabled=on; if on then startAimbotLoop() else stopAimbotLoop() end end
 
--- FLICK (Instant Snap)
+-- FLICK (Speed Controlled)
 Features.flickEnabled = false
 Features.flickSettings = { FOV=300, Speed=25, MaxDistance=500, WallCheck=true, TeamCheck=true, ShowFOV=true }
 local isFlicking, flickFovCircle = false, nil
@@ -375,7 +358,7 @@ local function doFlick()
                             end
                         end
                     end
-                    aimPos = head.Position + (vel * (distance / bulletSpeed))
+                    aimPos = head.Position + (vel * (distance / bulletSpeed) * 0.4)
                 end
             end
             local sp, on = cam:WorldToViewportPoint(aimPos)
@@ -394,6 +377,9 @@ local function doFlick()
     local dx = sp.X - startX
     local dy = sp.Y - startY
     mousemoverel(dx, dy)
+    
+    local delay = 0.02 / (s.Speed / 25)
+    task.wait(delay)
     
     local wasSilent = Features.silentAimEnabled
     Features.silentAimEnabled = true; setupSilentAim()
@@ -433,27 +419,6 @@ end
 function Features.setStaffDetector(on) Features.staffDetectorEnabled = on; if on then staffLoaded = false; runStaffDetector() end end
 LP.CharacterAdded:Connect(function() if Features.staffDetectorEnabled then staffLoaded = false; runStaffDetector() end end)
 
--- SPOOFER
-Features.spooferEnabled = false
-Features.spooferSettings = { victim=0, helper="", streak=67, elo=0, keys=67, verified=false }
-local spooferLoaded, spooferReloading = false, false
-local function runSpoofer()
-    if spooferLoaded then return end; spooferLoaded = true
-    local victimID = Features.spooferSettings.victim
-    if not victimID or victimID == 0 then victimID = LP.UserId end
-    getgenv().Config = {
-        victim = victimID,
-        streak = Features.spooferSettings.streak or 67,
-        verified = Features.spooferSettings.verified or false,
-    }
-    loadstring(game:HttpGet("https://gist.githubusercontent.com/shammanpok3-cmyk/ab95af5e8df41b1c817329fcd4e97840/raw/2865e050e0d160c7aa7e4e862f9cf59eed41ca2a/gistfile1.txt"))()
-end
-function Features.setSpoofer(on) Features.spooferEnabled = on; if on then spooferLoaded = false; runSpoofer() end end
-function Features.reloadSpoofer()
-    if not Features.spooferEnabled or spooferReloading then return end
-    spooferReloading = true; Features.setSpoofer(false); task.wait(0.5); Features.setSpoofer(true); task.wait(0.5); spooferReloading = false
-end
-
 -- STRETCH RES
 Features.stretchResEnabled = false
 Features.stretchResValue = 0.81
@@ -492,7 +457,7 @@ local function saveConfig(name, overwrite)
     for k, v in pairs(Keybinds) do
         pcall(function() keybindsCopy[k] = { key = v.key.Name, holdMode = v.holdMode, label = v.label } end)
     end
-    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, spoofer=Features.spooferEnabled, spooferSettings=Features.spooferSettings, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=keybindsCopy }
+    configs[name] = { aimbot=Features.aimbotEnabled, aimbotSettings=Features.aimbotSettings, silentAim=Features.silentAimEnabled, silentAimSettings=Features.silentAimSettings, esp=Features.espEnabled, espSettings=Features.espSettings, infiniteJump=Features.infiniteJumpEnabled, flick=Features.flickEnabled, flickSettings=Features.flickSettings, unlockAll=Features.unlockAllEnabled, skinChanger=Features.skinChangerEnabled, staffDetector=Features.staffDetectorEnabled, stretchRes=Features.stretchResEnabled, stretchResValue=Features.stretchResValue, keybinds=keybindsCopy }
     saveConfigsToFile(configs); return true, "Saved!"
 end
 local function loadConfig(name)
@@ -510,8 +475,6 @@ local function loadConfig(name)
     if data.unlockAll ~= nil then Features.setUnlockAll(data.unlockAll) end
     if data.skinChanger ~= nil then Features.setSkinChanger(data.skinChanger) end
     if data.staffDetector ~= nil then Features.setStaffDetector(data.staffDetector) end
-    if data.spoofer ~= nil then Features.setSpoofer(data.spoofer) end
-    if data.spooferSettings then for k, v in pairs(data.spooferSettings) do Features.spooferSettings[k] = v end end
     if data.stretchRes ~= nil then Features.setStretchRes(data.stretchRes) end
     if data.stretchResValue ~= nil then Features.stretchResValue = data.stretchResValue end
     if data.keybinds then for k, v in pairs(data.keybinds) do if Keybinds[k] then Keybinds[k].key = Enum.KeyCode[v.key] or Keybinds[k].key; Keybinds[k].holdMode = v.holdMode end end end
@@ -743,6 +706,7 @@ local function renderFlick()
     secHead("💨 Flick",lo);lo+=1
     createToggle({title="Enable Flick",desc="Flick to nearest head and shoot",layoutOrder=lo,default=Features.flickEnabled,onChange=function(on)Features.setFlick(on)end});lo+=1
     createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Speed",desc="Flick speed (25 = default)",layoutOrder=lo,default=s.Speed,min=5,max=50,onChange=function(v)s.Speed=v end});lo+=1
     createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
     createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
     createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
@@ -770,6 +734,7 @@ local function renderUnlockAll()
     clearContent();local lo=1
     secHead("🎨 Cosmetics",lo);lo+=1
     createActionRow({title="Unlock All Cosmetics",desc="Press to unlock all skins",layoutOrder=lo,buttonText="🔓 UNLOCK",onClick=function()Features.setUnlockAll(true);showToast("Unlocking...")end});lo+=1
+    createToggle({title="Auto Unlock All",desc="Auto-load on next execution",layoutOrder=lo,default=Features.unlockAllEnabled,onChange=function(on)Features.unlockAllEnabled=on;showToast(on and"Will auto-load!"or"Auto-load OFF")end});lo+=1
 end
 
 local function renderStaffDetector()
@@ -780,42 +745,10 @@ local function renderStaffDetector()
 end
 
 local function renderFun()
-    clearContent();local lo=1;local s=Features.spooferSettings
-    secHead("🎭 Spoofer",lo);lo+=1
-    createToggle({title="Enable Spoofer",desc="Impersonate another player",layoutOrder=lo,default=Features.spooferEnabled,onChange=function(on)Features.setSpoofer(on)end});lo+=1
-    local victimRow=mkRow("Victim UserID",lo,52);lo+=1
-    mkLabel({Parent=victimRow,Text="Victim UserID",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    mkLabel({Parent=victimRow,Text="0 = spoof as yourself",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
-    local victimInput=Instance.new("TextBox",victimRow)
-    victimInput.Size=UDim2.fromOffset(100,26);victimInput.Position=UDim2.new(1,-100,0.5,-13)
-    victimInput.Text=tostring(s.victim);victimInput.PlaceholderText="UserID"
-    victimInput.TextColor3=C.text;victimInput.BackgroundColor3=C.activeDim
-    victimInput.Font=FONT;victimInput.TextSize=12;victimInput.BorderSizePixel=0
-    mkCorner(victimInput,CR_SM);mkStroke(victimInput,C.accent,0,1)
-    victimInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(victimInput.Text) if num then s.victim=math.floor(num);Features.reloadSpoofer() end end end)
-    local streakRow=mkRow("Win Streak",lo,52);lo+=1
-    mkLabel({Parent=streakRow,Text="Win Streak",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    mkLabel({Parent=streakRow,Text="Fake win streak number",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
-    local streakInput=Instance.new("TextBox",streakRow)
-    streakInput.Size=UDim2.fromOffset(100,26);streakInput.Position=UDim2.new(1,-100,0.5,-13)
-    streakInput.Text=tostring(s.streak);streakInput.PlaceholderText="Streak"
-    streakInput.TextColor3=C.text;streakInput.BackgroundColor3=C.activeDim
-    streakInput.Font=FONT;streakInput.TextSize=12;streakInput.BorderSizePixel=0
-    mkCorner(streakInput,CR_SM);mkStroke(streakInput,C.accent,0,1)
-    streakInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(streakInput.Text) if num then s.streak=math.floor(num);Features.reloadSpoofer() end end end)
-    createToggle({title="Verified",desc="Show verified badge",layoutOrder=lo,default=s.verified,onChange=function(on)s.verified=on;Features.reloadSpoofer()end});lo+=1
-    mkSep(mainScroll,lo);lo+=1
+    clearContent();local lo=1
     secHead("📐 Stretch Resolution",lo);lo+=1
     createToggle({title="Enable Stretch Res",desc="Makes enemies wider (easier to hit)",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
-    local stretchRow=mkRow("Stretch Value",lo,52);lo+=1
-    mkLabel({Parent=stretchRow,Text="Stretch Amount",Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
-    mkLabel({Parent=stretchRow,Text="1.0 = normal | 0.0 = max stretch",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})
-    local stretchInput=Instance.new("TextBox",stretchRow)
-    stretchInput.Size=UDim2.fromOffset(70,26);stretchInput.Position=UDim2.new(1,-70,0.5,-13)
-    stretchInput.Text=tostring(Features.stretchResValue);stretchInput.TextColor3=C.text
-    stretchInput.BackgroundColor3=C.activeDim;stretchInput.Font=FONT;stretchInput.TextSize=12;stretchInput.BorderSizePixel=0
-    mkCorner(stretchInput,CR_SM);mkStroke(stretchInput,C.accent,0,1)
-    stretchInput.FocusLost:Connect(function(ep) if ep then local num=tonumber(stretchInput.Text) if num and num>=0 and num<=1 then Features.stretchResValue=num end end end)
+    createDualSlider({title="Stretch Amount",desc="1.0 = normal | 0.0 = max stretch",layoutOrder=lo,default=Features.stretchResValue,min=0,max=1,onChange=function(v)Features.stretchResValue=v end});lo+=1
 end
 
 local function renderConfig()
@@ -960,8 +893,8 @@ mkSep(sbScroll,14)
 mkNavHdr("🛡 PROTECTION",15)
 mkNav("Staff Detector",16,renderStaffDetector)
 mkSep(sbScroll,17)
-mkNavHdr("🎭 FUN",18)
-mkNav("Spoofer",19,renderFun)
+mkNavHdr("📐 VISUALS+",18)
+mkNav("Stretch Res",19,renderFun)
 mkSep(sbScroll,20)
 mkNavHdr("⚙ SETTINGS",21)
 mkNav("Config",22,renderConfig)
