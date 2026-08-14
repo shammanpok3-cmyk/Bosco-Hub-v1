@@ -113,12 +113,8 @@ Players.PlayerRemoving:Connect(removeESP)
 LP.CharacterAdded:Connect(function() task.wait(0.2); if Features.espEnabled then removeAllESP() end end)
 
 -- SILENT AIM (Proven Method)
-getgenv().Config = {
-    HitPart = "Head",
-    FOVRadius = 300,
-    ShowFOV = true
-}
-
+Features.silentAimEnabled = false
+Features.silentAimSettings = { FOV=300, MaxDistance=500, HitPart="Head", TeamCheck=true, ShowFOV=true }
 local silentAimHooked = false
 local silentFovCircle = nil
 
@@ -144,16 +140,11 @@ local function setupSilentAim()
                 if hum and hum.Health <= 0 then continue end
                 local part = entity:FindFirstChild(Features.silentAimSettings.HitPart, true)
                 if not part or not part:IsA("BasePart") then continue end
-                
-                if Features.silentAimSettings.MaxDistance and (Camera.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
-                
+                if (Camera.CFrame.Position - part.Position).Magnitude > Features.silentAimSettings.MaxDistance then continue end
                 local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
                 if not onScreen then continue end
                 local d = (center - Vector2.new(sp.X, sp.Y)).Magnitude
-                if d < bestDist then
-                    bestDist = d
-                    bestPart = part
-                end
+                if d < bestDist then bestDist = d; bestPart = part end
             end
             return bestPart
         end
@@ -161,24 +152,13 @@ local function setupSilentAim()
         Utility.Raycast = function(self, origin, direction, maxDistance, ...)
             if not Features.silentAimEnabled then return originalRaycast(self, origin, direction, maxDistance, ...) end
             if type(maxDistance) ~= "number" or maxDistance < 100 then return originalRaycast(self, origin, direction, maxDistance, ...) end
-            
             local targetPart = findTarget()
             if not targetPart then return originalRaycast(self, origin, direction, maxDistance, ...) end
-            
             local targetPos = targetPart.Position
             local dir = (targetPos - origin).Unit
             local dist = (targetPos - origin).Magnitude
-            if dist > maxDistance then
-                dist = maxDistance
-                targetPos = origin + (dir * maxDistance)
-            end
-            return {
-                Position = targetPos,
-                Distance = dist,
-                Instance = targetPart,
-                Material = targetPart.Material,
-                Normal = -dir
-            }
+            if dist > maxDistance then dist = maxDistance; targetPos = origin + (dir * maxDistance) end
+            return { Position=targetPos, Distance=dist, Instance=targetPart, Material=targetPart.Material, Normal=-dir }
         end
     end)
 end
@@ -493,6 +473,16 @@ local function loadConfig(name)
     return true, "Loaded!"
 end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
+
+-- Delete corrupted config if empty
+pcall(function()
+    if isfile(configFileName) then
+        local test = getAllConfigs()
+        if not test or not next(test) then
+            delfile(configFileName)
+        end
+    end
+end)
 
 -- Auto-load config on join (safe)
 task.wait(1)
