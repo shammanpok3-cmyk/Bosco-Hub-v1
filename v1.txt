@@ -576,96 +576,146 @@ end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
 -- ============================================
--- SIMPLE RESPONSIVE UI (No fancy functions)
+-- IMPROVED RESPONSIVE UI SYSTEM
 -- ============================================
+local ResponsiveUI = {}
 
--- Basic device detection
-local screenWidth = Camera.ViewportSize.X
-local screenHeight = Camera.ViewportSize.Y
-local isMobile = (screenWidth <= 800) or (UIS.TouchEnabled and screenWidth <= 1024)
+ResponsiveUI.Config = {
+    Devices = {
+        Mobile = {
+            RootWidth = 350,      -- Fits most phones
+            RootHeight = 600,     -- Good height for mobile
+            SidebarWidth = 140,   -- Narrower sidebar for mobile
+            FontScale = 0.75,     -- Smaller fonts
+            UIScale = 0.75,       -- Overall scale
+            CompactMode = true,   -- Compact UI elements
+        },
+        Tablet = {
+            RootWidth = 550,      -- Fits tablets
+            RootHeight = 650,
+            SidebarWidth = 160,
+            FontScale = 0.85,
+            UIScale = 0.85,
+            CompactMode = false,
+        },
+        PC = {
+            RootWidth = 880,
+            RootHeight = 540,
+            SidebarWidth = 200,
+            FontScale = 1.0,
+            UIScale = 1.0,
+            CompactMode = false,
+        }
+    }
+}
 
--- Calculate UI size based on screen
-local rootWidth, rootHeight, sidebarWidth
+ResponsiveUI.State = {
+    Device = "PC",
+    Scale = 1,
+    ScreenSize = nil,
+    IsMobile = false,
+}
 
-if isMobile then
-    -- Mobile: Use almost full screen
-    rootWidth = screenWidth - 20
-    rootHeight = math.min(600, screenHeight - 20)
-    sidebarWidth = math.floor(rootWidth * 0.25) -- 25% for sidebar
-elseif screenWidth <= 1200 then
-    -- Tablet: Medium size
-    rootWidth = math.min(750, screenWidth - 40)
-    rootHeight = math.min(620, screenHeight - 40)
-    sidebarWidth = 190
-else
-    -- PC: Default size
-    rootWidth = 880
-    rootHeight = 540
-    sidebarWidth = 200
+function ResponsiveUI.DetectDevice()
+    local viewportSize = Camera.ViewportSize
+    ResponsiveUI.State.ScreenSize = viewportSize
+    local width = viewportSize.X
+    local height = viewportSize.Y
+    
+    if width <= 800 or (UIS.TouchEnabled and width <= 1024) then
+        ResponsiveUI.State.Device = "Mobile"
+    elseif width <= 1200 then
+        ResponsiveUI.State.Device = "Tablet"
+    else
+        ResponsiveUI.State.Device = "PC"
+    end
+    
+    ResponsiveUI.State.IsMobile = (ResponsiveUI.State.Device == "Mobile")
+    local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
+    ResponsiveUI.State.Scale = deviceConfig.UIScale
+    
+    -- Adjust root size based on actual screen
+    if ResponsiveUI.State.IsMobile then
+        -- Make root fill most of screen with margins
+        local margin = 10
+        local maxWidth = viewportSize.X - (margin * 2)
+        local maxHeight = viewportSize.Y - (margin * 2)
+        
+        deviceConfig.RootWidth = math.min(deviceConfig.RootWidth, maxWidth)
+        deviceConfig.RootHeight = math.min(deviceConfig.RootHeight, maxHeight)
+        
+        -- Ensure minimum size
+        deviceConfig.RootWidth = math.max(deviceConfig.RootWidth, 300)
+        deviceConfig.RootHeight = math.max(deviceConfig.RootHeight, 400)
+    end
+    
+    return ResponsiveUI.State.Device
 end
 
--- Create root with calculated size
-local root=Instance.new("Frame")
-root.Name="Root"
-root.BackgroundColor3=C.bg
-root.BorderSizePixel=0
-root.Size=UDim2.fromOffset(rootWidth, rootHeight)
-root.Position=UDim2.new(0.5,0,0.5,0)
-root.AnchorPoint=Vector2.new(0.5,0.5)
-root.ClipsDescendants=true
-root.ZIndex=999
-root.Visible=false
-root.Parent=gui
-mkCorner(root,CR_XL)
-mkStroke(root,C.accent,0,2)
-mkGradient(root,C.bg,Color3.fromRGB(8,0,20))
+-- Call detection
+ResponsiveUI.DetectDevice()
 
--- Create sidebar
-local sidebar=Instance.new("Frame")
-sidebar.BackgroundColor3=C.sidebarBg
-sidebar.BorderSizePixel=0
-sidebar.Size=UDim2.new(0, sidebarWidth, 1, 0)
-sidebar.ZIndex=5
-sidebar.Parent=body
-
--- Create main area
-local main=Instance.new("Frame")
-main.Name="Main"
-main.BackgroundColor3=C.panel
-main.BorderSizePixel=0
-main.Size=UDim2.new(1, -sidebarWidth, 1, 0)
-main.Position=UDim2.fromOffset(sidebarWidth, 0)
-main.ZIndex=4
-main.Parent=body
+-- Handle screen resize
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    ResponsiveUI.DetectDevice()
+    
+    if root then
+        local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
+        
+        -- Update root size
+        root.Size = UDim2.fromOffset(deviceConfig.RootWidth, deviceConfig.RootHeight)
+        
+        -- Update sidebar
+        sidebar.Size = UDim2.new(0, deviceConfig.SidebarWidth, 1, 0)
+        
+        -- Update main area
+        main.Size = UDim2.new(1, -deviceConfig.SidebarWidth, 1, 0)
+        main.Position = UDim2.fromOffset(deviceConfig.SidebarWidth, 0)
+        
+        -- Update fonts
+        local fontScale = deviceConfig.FontScale
+        for _, child in ipairs(mainScroll:GetDescendants()) do
+            if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+                if child:GetAttribute("OriginalTextSize") then
+                    child.TextSize = child:GetAttribute("OriginalTextSize") * fontScale
+                else
+                    child:SetAttribute("OriginalTextSize", child.TextSize)
+                    child.TextSize = child.TextSize * fontScale
+                end
+            end
+        end
+    end
+end)
 
 -- ============================================
--- MOBILE BUTTON (Simple version)
+-- MOBILE BUTTON (Movable, default top middle)
 -- ============================================
-if isMobile then
-    local mobileButton = Instance.new("ImageButton")
+local mobileButton = nil
+if ResponsiveUI.State.IsMobile then
+    mobileButton = Instance.new("ImageButton")
     mobileButton.Name = "MobileMenuButton"
-    mobileButton.Size = UDim2.fromOffset(50, 50)
-    mobileButton.Position = UDim2.new(0.5, -25, 0, 10) -- Top middle
+    mobileButton.Size = UDim2.fromOffset(55, 55)
+    mobileButton.Position = UDim2.new(0.5, 0, 0, 10) -- Top middle
+    mobileButton.AnchorPoint = Vector2.new(0.5, 0)
     mobileButton.BackgroundTransparency = 0.2
     mobileButton.BackgroundColor3 = Color3.fromRGB(140, 30, 255)
     mobileButton.Image = "rbxassetid://134381155775118"
+    mobileButton.ImageTransparency = 0.1
     mobileButton.ScaleType = Enum.ScaleType.Fit
     mobileButton.ZIndex = 999
     mobileButton.Parent = gui
     
-    -- Corner
     local mCorner = Instance.new("UICorner")
     mCorner.CornerRadius = UDim.new(0, 12)
     mCorner.Parent = mobileButton
     
-    -- Stroke
     local mStroke = Instance.new("UIStroke")
     mStroke.Color = Color3.fromRGB(180, 80, 255)
     mStroke.Thickness = 2
     mStroke.Transparency = 0.3
     mStroke.Parent = mobileButton
     
-    -- Simple drag functionality
+    -- Make button movable
     local dragging = false
     local dragStart = nil
     local buttonStart = nil
@@ -676,6 +726,11 @@ if isMobile then
             dragging = true
             dragStart = input.Position
             buttonStart = mobileButton.Position
+            
+            -- Visual feedback
+            TweenService:Create(mobileButton, TweenInfo.new(0.1), {
+                Size = UDim2.fromOffset(50, 50)
+            }):Play()
         end
     end)
     
@@ -691,6 +746,42 @@ if isMobile then
             )
         end
     end)
+    
+    UIS.InputEnded:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.Touch or 
+                        input.UserInputType == Enum.UserInputType.MouseButton1) then
+            dragging = false
+            
+            -- Visual feedback
+            TweenService:Create(mobileButton, TweenInfo.new(0.1), {
+                Size = UDim2.fromOffset(55, 55)
+            }):Play()
+            
+            -- Check if it was a tap (not drag)
+            if (input.Position - dragStart).Magnitude < 10 then
+                menuOpen = not menuOpen
+                root.Visible = menuOpen
+            else
+                -- Clamp button to screen bounds
+                local buttonSize = mobileButton.AbsoluteSize
+                local screenSize = Camera.ViewportSize
+                local pos = mobileButton.Position
+                
+                -- Clamp X
+                local minX = buttonSize.X / 2
+                local maxX = screenSize.X - buttonSize.X / 2
+                pos = UDim2.new(0, math.clamp(pos.X.Offset, minX, maxX), pos.Y.Scale, pos.Y.Offset)
+                
+                -- Clamp Y
+                local minY = buttonSize.Y / 2
+                local maxY = screenSize.Y - buttonSize.Y / 2
+                pos = UDim2.new(pos.X.Scale, pos.X.Offset, 0, math.clamp(pos.Y.Offset, minY, maxY))
+                
+                mobileButton.Position = pos
+            end
+        end
+    end)
+end
     
     UIS.InputEnded:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.Touch or 
@@ -734,7 +825,22 @@ local function mkCorner(p,r)local c=Instance.new("UICorner");c.CornerRadius=r or
 local function mkStroke(p,col,tr,th)local s=Instance.new("UIStroke");s.Color=col or C.sep;s.Transparency=tr or 0.5;s.Thickness=th or 1;s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;s.Parent=p;return s end
 local function mkPad(p,t,r,b,l)local x=Instance.new("UIPadding");x.PaddingTop=UDim.new(0,t or 12);x.PaddingRight=UDim.new(0,r or 12);x.PaddingBottom=UDim.new(0,b or 12);x.PaddingLeft=UDim.new(0,l or 12);x.Parent=p;return x end
 local function mkGradient(p,c1,c2)local g=Instance.new("UIGradient");g.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,c1 or C.accent),ColorSequenceKeypoint.new(1,c2 or C.accentBrt)});g.Parent=p;return g end
-local function mkLabel(props)local l=Instance.new("TextLabel");l.Name=props.Name or"Lbl";l.BackgroundTransparency=1;l.Font=props.Font or FONT;l.TextSize=props.TextSize or 13;l.TextColor3=props.TextColor or C.text;l.Text=props.Text or"";l.TextXAlignment=props.TextXAlignment or Enum.TextXAlignment.Left;l.TextYAlignment=Enum.TextYAlignment.Center;if props.Size then l.Size=props.Size end;if props.Position then l.Position=props.Position end;if props.LayoutOrder then l.LayoutOrder=props.LayoutOrder end;l.Parent=props.Parent;return l end
+local function mkLabel(props)
+    local l=Instance.new("TextLabel")
+    l.Name=props.Name or"Lbl"
+    l.BackgroundTransparency=1
+    l.Font=props.Font or FONT
+    l.TextSize = (props.TextSize or 13) * deviceConfig.FontScale
+    l.TextColor3=props.TextColor or C.text
+    l.Text=props.Text or""
+    l.TextXAlignment=props.TextXAlignment or Enum.TextXAlignment.Left
+    l.TextYAlignment=Enum.TextYAlignment.Center
+    if props.Size then l.Size=props.Size end
+    if props.Position then l.Position=props.Position end
+    if props.LayoutOrder then l.LayoutOrder=props.LayoutOrder end
+    l.Parent=props.Parent
+    return l
+end
 local function mkSep(parent,lo)local l=Instance.new("Frame");l.Name="Sep";l.Size=UDim2.new(1,0,0,1);l.BackgroundColor3=C.sep;l.BackgroundTransparency=0.4;l.BorderSizePixel=0;l.LayoutOrder=lo or 0;l.Parent=parent;return l end
 
 local gui=Instance.new("ScreenGui");gui.Name="BoscoHub";gui.ResetOnSpawn=false;gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;gui.IgnoreGuiInset=true;gui.DisplayOrder=100;gui.Parent=PGui
@@ -748,8 +854,20 @@ local function showToast(msg)
 end
 
 local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
-local root=Instance.new("Frame");root.Name="Root";root.BackgroundColor3=C.bg;root.BorderSizePixel=0;root.Size=UDim2.fromOffset(deviceConfig.RootWidth,deviceConfig.RootHeight)
-root.Position=UDim2.new(0.5,0,0.5,0);root.AnchorPoint=Vector2.new(0.5,0.5);root.ClipsDescendants=true;root.ZIndex=999;root.Visible=false;root.Parent=gui
+local root=Instance.new("Frame");root.Name="Root";root.BackgroundColor3=C.bg;root.BorderSizePixel=0
+root.AnchorPoint=Vector2.new(0.5,0.5);root.ClipsDescendants=true;root.ZIndex=999;root.Visible=false;root.Parent=gui
+
+-- Set root size based on device
+if ResponsiveUI.State.IsMobile then
+    -- For mobile, fill most of screen with small margins
+    local margin = 10
+    root.Size = UDim2.new(1, -margin*2, 1, -margin*2)
+    root.Position = UDim2.new(0.5, 0, 0.5, 0)
+else
+    -- For PC and Tablet, use fixed size
+    root.Size = UDim2.fromOffset(deviceConfig.RootWidth, deviceConfig.RootHeight)
+    root.Position = UDim2.new(0.5, 0, 0.5, 0)
+end
 mkCorner(root,CR_XL);mkStroke(root,C.accent,0,2);mkGradient(root,C.bg,Color3.fromRGB(8,0,20))
 
 local topBar=Instance.new("Frame");topBar.Name="TopBar";topBar.BackgroundColor3=C.topBar;topBar.BorderSizePixel=0;topBar.Size=UDim2.new(1,0,0,48);topBar.ZIndex=10;topBar.Parent=root
@@ -948,7 +1066,7 @@ local function renderStretchRes()
     clearContent();local lo=1
     secHead("📐 Stretch Resolution",lo);lo+=1
     createToggle({title="Enable Stretch Res",desc="Makes enemies wider (easier to hit)",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
-    createDualSlider({title="Stretch Amount",desc="1.0 = normal | 0.0 = max stretch",layoutOrder=lo,default=Features.stretchResValue,min=0,max=1,onChange=function(v)Features.stretchResValue=v end});lo+=1
+    createDualSlider({title="Stretch Amount",desc="0.0 = normal | 1 = max stretch",layoutOrder=lo,default=Features.stretchResValue,min=0,max=1,onChange=function(v)Features.stretchResValue=v end});lo+=1
 end
 
 local function renderConfig()
@@ -1113,6 +1231,16 @@ mkNav("Keybinds",23,renderKeybinds)
 renderTriggerbot()
 if navBtns["Triggerbot"]then setNavActive(navBtns["Triggerbot"])end
 
+-- Add backdrop for mobile
+local backdrop = Instance.new("Frame")
+backdrop.Name = "Backdrop"
+backdrop.Size = UDim2.fromScale(1, 1)
+backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+backdrop.BackgroundTransparency = 0.5
+backdrop.Visible = false
+backdrop.ZIndex = 998
+backdrop.Parent = gui
+
 -- ============================================
 -- MOBILE BUTTON (Movable, Default Top Middle)
 -- ============================================
@@ -1218,9 +1346,31 @@ end
 
 -- MENU TOGGLE & KEYBINDS
 local menuOpen=false
-local function toggleMenu()menuOpen=not menuOpen;root.Visible=menuOpen end
-winClose.MouseButton1Click:Connect(function()menuOpen=false;root.Visible=false end)
-winMin.MouseButton1Click:Connect(function()menuOpen=false;root.Visible=false end)
+-- Update menu toggle to show/hide backdrop
+local function toggleMenu()
+    menuOpen = not menuOpen
+    root.Visible = menuOpen
+    if ResponsiveUI.State.IsMobile then
+        backdrop.Visible = menuOpen
+    end
+end
+
+-- Also update winClose and winMin
+winClose.MouseButton1Click:Connect(function()
+    menuOpen = false
+    root.Visible = false
+    if ResponsiveUI.State.IsMobile then
+        backdrop.Visible = false
+    end
+end)
+
+winMin.MouseButton1Click:Connect(function()
+    menuOpen = false
+    root.Visible = false
+    if ResponsiveUI.State.IsMobile then
+        backdrop.Visible = false
+    end
+end)
 
 UIS.InputBegan:Connect(function(input,gp)
     if gp then return end
