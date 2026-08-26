@@ -1,8 +1,4 @@
-﻿--[[
-    Bosco Hub V1 — LocalScript (All Devices)
-    Made by Bosco
-    Updated with Triggerbot, Responsive UI, and Mobile Support
-]]
+﻿--[[ Bosco Hub V1 — LocalScript (All Devices) Made by Bosco Updated with Triggerbot, Responsive UI, and Mobile Support ]]
 
 -- Services
 local Players = game:GetService("Players")
@@ -15,30 +11,21 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Cloneref for security
--- Use services directly (remove cloneref if not supported)
-local repS = ReplicatedStorage
-local plrs = Players
-local runS = RunService
-local ws = Workspace
-local uis = UIS
+local repS = cloneref(ReplicatedStorage)
+local plrs = cloneref(Players)
+local runS = cloneref(RunService)
+local ws = cloneref(Workspace)
+local uis = cloneref(UIS)
 
 local LP = Players.LocalPlayer
 local PGui = LP:WaitForChild("PlayerGui")
-local Camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
+local Camera = Workspace.CurrentCamera
 
--- Game modules (with error handling)
-local util, enum, FighterController, SpectateController
-
-pcall(function() util = require(repS.Modules.Utility) end)
-pcall(function() enum = require(repS.Modules.EnumLibrary) end)
-pcall(function() FighterController = require(LP.PlayerScripts.Controllers.FighterController) end)
-pcall(function() SpectateController = require(LP.PlayerScripts.Controllers:WaitForChild("SpectateController")) end)
-
--- Fallback if modules not found
-if not util then util = { Raycast = function(...) return Workspace:Raycast(...) end, EncodeCFrame = function(cf) return {cf:GetComponents()} end } end
-if not enum then enum = { ToEnum = function(s) return s end } end
-if not FighterController then FighterController = { LocalFighter = nil, Objects = {} } end
-if not SpectateController then SpectateController = { CurrentDuelSubject = nil } end
+-- Game modules
+local util = require(repS.Modules.Utility)
+local enum = require(repS.Modules.EnumLibrary)
+local FighterController = require(LP.PlayerScripts.Controllers.FighterController)
+local SpectateController = require(LP.PlayerScripts.Controllers:WaitForChild("SpectateController"))
 
 -- Team Check
 local function isTeammate(player)
@@ -589,18 +576,17 @@ end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
 -- ============================================
--- RESPONSIVE UI SYSTEM
+-- IMPROVED RESPONSIVE UI
 -- ============================================
-local ResponsiveUI = {}
-
 ResponsiveUI.Config = {
     Devices = {
         Mobile = {
-            UIScale = 0.95,
-            SidebarWidth = 180,
-            FontScale = 0.9,
-            RootWidth = 420,
+            UIScale = 0.95, -- Increased from 0.7
+            SidebarWidth = 180, -- Increased from 150
+            FontScale = 0.9, -- Increased from 0.8
+            RootWidth = 420, -- Wider
             RootHeight = 600,
+            CompactMode = true,
         },
         Tablet = {
             UIScale = 0.95,
@@ -608,6 +594,7 @@ ResponsiveUI.Config = {
             FontScale = 0.95,
             RootWidth = 750,
             RootHeight = 620,
+            CompactMode = false,
         },
         PC = {
             UIScale = 1.0,
@@ -615,59 +602,112 @@ ResponsiveUI.Config = {
             FontScale = 1.0,
             RootWidth = 880,
             RootHeight = 540,
+            CompactMode = false,
         }
     }
 }
 
-ResponsiveUI.State = {
-    Device = "PC",
-    Scale = 1,
-    IsMobile = false,
-}
-
-function ResponsiveUI.DetectDevice()
-    local viewportSize = Camera.ViewportSize
-    local width = viewportSize.X
-    
-    if width <= 800 or (UIS.TouchEnabled and width <= 1024) then
-        ResponsiveUI.State.Device = "Mobile"
-    elseif width <= 1200 then
-        ResponsiveUI.State.Device = "Tablet"
-    else
-        ResponsiveUI.State.Device = "PC"
-    end
-    
-    ResponsiveUI.State.IsMobile = (ResponsiveUI.State.Device == "Mobile")
-    local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
-    ResponsiveUI.State.Scale = deviceConfig.UIScale
-    
-    return ResponsiveUI.State.Device
-end
-
+-- Calculate responsive size based on screen
 function ResponsiveUI.CalculateSize()
     local screenWidth = Camera.ViewportSize.X
     local screenHeight = Camera.ViewportSize.Y
     local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
     
+    -- Ensure UI doesn't exceed screen size
     local maxWidth = screenWidth * 0.95
     local maxHeight = screenHeight * 0.9
     
+    -- Calculate width
     local width = deviceConfig.RootWidth
-    if width > maxWidth then width = maxWidth end
+    if width > maxWidth then
+        width = maxWidth
+    end
     
+    -- Calculate height
     local height = deviceConfig.RootHeight
-    if height > maxHeight then height = maxHeight end
+    if height > maxHeight then
+        height = maxHeight
+    end
     
+    -- For mobile, use full screen width with margins
     if ResponsiveUI.State.IsMobile then
-        width = screenWidth - 20
+        width = screenWidth - 20 -- 10px margin on each side
         height = math.min(deviceConfig.RootHeight, maxHeight)
     end
     
+    -- Calculate sidebar width (proportional)
     local sidebarWidth = math.min(deviceConfig.SidebarWidth, width * 0.35)
+    
     return width, height, sidebarWidth
 end
 
+-- Update UI size when screen changes
+function ResponsiveUI.UpdateUISize()
+    local width, height, sidebarWidth = ResponsiveUI.CalculateSize()
+    
+    if root then
+        root.Size = UDim2.fromOffset(width, height)
+        sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
+        main.Size = UDim2.new(1, -sidebarWidth, 1, 0)
+        main.Position = UDim2.fromOffset(sidebarWidth, 0)
+        
+        -- Adjust font sizes
+        for _, child in ipairs(mainScroll:GetChildren()) do
+            if child:IsA("TextLabel") then
+                child.TextSize = math.max(10, child.TextSize * ResponsiveUI.State.Scale)
+            end
+        end
+    end
+end
+
+-- Initialize with proper sizing
 ResponsiveUI.DetectDevice()
+local rootWidth, rootHeight, sidebarWidth = ResponsiveUI.CalculateSize()
+
+-- Create root with calculated size
+root = Instance.new("Frame")
+root.Name = "Root"
+root.BackgroundColor3 = C.bg
+root.BorderSizePixel = 0
+root.Size = UDim2.fromOffset(rootWidth, rootHeight)
+root.Position = UDim2.new(0.5, 0, 0.5, 0)
+root.AnchorPoint = Vector2.new(0.5, 0.5)
+root.ClipsDescendants = true
+root.ZIndex = 999
+root.Visible = false
+root.Parent = gui
+
+-- Create sidebar with calculated width
+sidebar = Instance.new("Frame")
+sidebar.BackgroundColor3 = C.sidebarBg
+sidebar.BorderSizePixel = 0
+sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
+sidebar.ZIndex = 5
+sidebar.Parent = body
+
+-- Create main with calculated width
+main = Instance.new("Frame")
+main.Name = "Main"
+main.BackgroundColor3 = C.panel
+main.BorderSizePixel = 0
+main.Size = UDim2.new(1, -sidebarWidth, 1, 0)
+main.Position = UDim2.fromOffset(sidebarWidth, 0)
+main.ZIndex = 4
+main.Parent = body
+
+-- Listen for screen changes
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    ResponsiveUI.DetectDevice()
+    ResponsiveUI.UpdateUISize()
+    
+    -- Update mobile button visibility
+    if mobileButton then
+        mobileButton.Visible = ResponsiveUI.State.IsMobile
+    end
+end)
+
+-- Initial size update
+ResponsiveUI.UpdateUISize()
 
 -- ============================================
 -- UI CREATION
@@ -695,9 +735,8 @@ local function showToast(msg)
     task.delay(2.5,function()if toast.Parent then toast:Destroy()end end)
 end
 
-local rootWidth, rootHeight, sidebarWidth = ResponsiveUI.CalculateSize()
-
-local root=Instance.new("Frame");root.Name="Root";root.BackgroundColor3=C.bg;root.BorderSizePixel=0;root.Size=UDim2.fromOffset(rootWidth,rootHeight)
+local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
+local root=Instance.new("Frame");root.Name="Root";root.BackgroundColor3=C.bg;root.BorderSizePixel=0;root.Size=UDim2.fromOffset(deviceConfig.RootWidth,deviceConfig.RootHeight)
 root.Position=UDim2.new(0.5,0,0.5,0);root.AnchorPoint=Vector2.new(0.5,0.5);root.ClipsDescendants=true;root.ZIndex=999;root.Visible=false;root.Parent=gui
 mkCorner(root,CR_XL);mkStroke(root,C.accent,0,2);mkGradient(root,C.bg,Color3.fromRGB(8,0,20))
 
@@ -718,12 +757,13 @@ for i,col in ipairs({Color3.fromRGB(255,70,70),Color3.fromRGB(255,180,50),Color3
 local titleLabel=Instance.new("TextLabel");titleLabel.BackgroundTransparency=1;titleLabel.Text="BOSCO HUB V1";titleLabel.Font=FONT_BOL;titleLabel.TextSize=14;titleLabel.TextColor3=C.accentBrt;titleLabel.TextXAlignment=Enum.TextXAlignment.Center;titleLabel.Size=UDim2.new(1,-120,1,0);titleLabel.Position=UDim2.new(0,60,0,0);titleLabel.Parent=topBar
 
 local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Name="Body";body.Size=UDim2.new(1,0,1,-48);body.Position=UDim2.fromOffset(0,48);body.ZIndex=4;body.Parent=root
-local sidebar=Instance.new("Frame");sidebar.BackgroundColor3=C.sidebarBg;sidebar.BorderSizePixel=0;sidebar.Size=UDim2.new(0,sidebarWidth,1,0);sidebar.ZIndex=5;sidebar.Parent=body
+local sidebar=Instance.new("Frame");sidebar.BackgroundColor3=C.sidebarBg;sidebar.BorderSizePixel=0;sidebar.Size=UDim2.new(0,deviceConfig.SidebarWidth,1,0);sidebar.ZIndex=5;sidebar.Parent=body
 local sbLine=Instance.new("Frame");sbLine.Size=UDim2.new(0,2,1,0);sbLine.Position=UDim2.new(1,-2,0,0);sbLine.BackgroundColor3=C.accent;sbLine.BorderSizePixel=0;sbLine.Parent=sidebar;mkGradient(sbLine,C.accent,C.accent2)
 local sbScroll=Instance.new("ScrollingFrame");sbScroll.BackgroundTransparency=1;sbScroll.BorderSizePixel=0;sbScroll.Size=UDim2.fromScale(1,1);sbScroll.CanvasSize=UDim2.new(0,0,0,0);sbScroll.ScrollBarThickness=3;sbScroll.ScrollBarImageColor3=C.accent;sbScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;sbScroll.Parent=sidebar
 mkPad(sbScroll,12,10,12,10)
 local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,4);sbLL.SortOrder=Enum.SortOrder.LayoutOrder;sbLL.Parent=sbScroll
 
+-- Logo
 local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,100);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
 local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,2);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
 local logo=Instance.new("ImageLabel",brandBlock)
@@ -732,14 +772,14 @@ logo.Image="rbxassetid://134381155775118"
 logo.ScaleType=Enum.ScaleType.Fit
 logo.LayoutOrder=1
 mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
-mkLabel({Parent=brandBlock,Text="V1  |  by Bosco",Font=FONT_BOL,TextSize=10,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=3})
+mkLabel({Parent=brandBlock,Text="V1 | by Bosco",Font=FONT_BOL,TextSize=10,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=3})
 
 local navBtns={};local activeNav=nil
 local function setNavActive(btn)if activeNav then activeNav.BackgroundColor3=Color3.fromRGB(0,0,0);activeNav.BackgroundTransparency=1;activeNav.TextColor3=C.textDim end;activeNav=btn;btn.BackgroundColor3=C.activeDim;btn.BackgroundTransparency=0;btn.TextColor3=C.accentBrt end
-local function mkNav(text,lo,onClick)local btn=Instance.new("TextButton");btn.Name=text:gsub(" ","");btn.LayoutOrder=lo;btn.Size=UDim2.new(1,0,0,32);btn.BackgroundColor3=Color3.fromRGB(0,0,0);btn.BackgroundTransparency=1;btn.Font=FONT_MED;btn.TextSize=12;btn.Text="  "..text;btn.TextColor3=C.textDim;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.sep,0.6,1);btn.Parent=sbScroll;navBtns[text]=btn;btn.MouseButton1Click:Connect(function()setNavActive(btn);if onClick then onClick()end end);return btn end
+local function mkNav(text,lo,onClick)local btn=Instance.new("TextButton");btn.Name=text:gsub(" ","");btn.LayoutOrder=lo;btn.Size=UDim2.new(1,0,0,32);btn.BackgroundColor3=Color3.fromRGB(0,0,0);btn.BackgroundTransparency=1;btn.Font=FONT_MED;btn.TextSize=12;btn.Text=" "..text;btn.TextColor3=C.textDim;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.sep,0.6,1);btn.Parent=sbScroll;navBtns[text]=btn;btn.MouseButton1Click:Connect(function()setNavActive(btn);if onClick then onClick()end end);return btn end
 local function mkNavHdr(text,lo)mkLabel({Parent=sbScroll,Text=text,Font=FONT_BOL,TextSize=9,TextColor=C.accent,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)})end
 
-local main=Instance.new("Frame");main.Name="Main";main.BackgroundColor3=C.panel;main.BorderSizePixel=0;main.Size=UDim2.new(1,-sidebarWidth,1,0);main.Position=UDim2.fromOffset(sidebarWidth,0);main.ZIndex=4;main.Parent=body
+local main=Instance.new("Frame");main.Name="Main";main.BackgroundColor3=C.panel;main.BorderSizePixel=0;main.Size=UDim2.new(1,-deviceConfig.SidebarWidth,1,0);main.Position=UDim2.fromOffset(deviceConfig.SidebarWidth,0);main.ZIndex=4;main.Parent=body
 mkCorner(main,UDim.new(0,8))
 local mainScroll=Instance.new("ScrollingFrame");mainScroll.BackgroundTransparency=1;mainScroll.BorderSizePixel=0;mainScroll.Size=UDim2.fromScale(1,1);mainScroll.CanvasSize=UDim2.new(0,0,0,0);mainScroll.ScrollBarThickness=3;mainScroll.ScrollBarImageColor3=C.accent;mainScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;mainScroll.Parent=main
 mkPad(mainScroll,18,18,18,18)
@@ -799,8 +839,8 @@ local function createCycleButton(props)
     mkLabel({Parent=row,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,14)})
     local opts=props.options or{};local currentIndex=1
     for i,o in ipairs(opts)do if o==props.default then currentIndex=i;break end end
-    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(120,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT;btn.TextSize=12;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";btn.TextColor3=C.accentBrt;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row
-    btn.MouseButton1Click:Connect(function()currentIndex=currentIndex+1;if currentIndex>#opts then currentIndex=1 end;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";if props.onChange then props.onChange(opts[currentIndex])end end)
+    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(120,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT;btn.TextSize=12;btn.Text=" "..tostring(opts[currentIndex]).." ↻";btn.TextColor3=C.accentBrt;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row
+    btn.MouseButton1Click:Connect(function()currentIndex=currentIndex+1;if currentIndex>#opts then currentIndex=1 end;btn.Text=" "..tostring(opts[currentIndex]).." ↻";if props.onChange then props.onChange(opts[currentIndex])end end)
     return row
 end
 
@@ -917,7 +957,7 @@ local function renderConfig()
         for name in pairs(configs)do
             if name:sub(1,2)~="__"then
                 local btn=Instance.new("TextButton",listFrame)
-                btn.Size=UDim2.new(1,0,0,32);btn.Text=(name==autoLoadConfig and"  ⭐ "or"  📁 ")..name
+                btn.Size=UDim2.new(1,0,0,32);btn.Text=(name==autoLoadConfig and" ⭐ "or" 📁 ")..name
                 btn.Font=FONT_MED;btn.TextSize=12;btn.TextColor3=C.text;btn.TextXAlignment=Enum.TextXAlignment.Left
                 btn.BackgroundColor3=(selectedConfig==name)and C.accent or C.row;btn.BorderSizePixel=0;mkCorner(btn,CR_SM)
                 if selectedConfig==name then found=true end
@@ -1061,14 +1101,16 @@ mkNav("Keybinds",23,renderKeybinds)
 renderTriggerbot()
 if navBtns["Triggerbot"]then setNavActive(navBtns["Triggerbot"])end
 
+-- ============================================
 -- MOBILE BUTTON (Movable, Default Top Middle)
+-- ============================================
 local mobileButton = nil
 if ResponsiveUI.State.IsMobile then
     mobileButton = Instance.new("ImageButton")
     mobileButton.Name = "MobileMenuButton"
     mobileButton.Size = UDim2.fromOffset(50, 50)
-    mobileButton.Position = UDim2.new(0.5, 0, 0, 10)
-    mobileButton.AnchorPoint = Vector2.new(0.5, 0)
+    mobileButton.Position = UDim2.new(0.5, 0, 0, 10) -- Top middle
+    mobileButton.AnchorPoint = Vector2.new(0.5, 0) -- Anchor to top center
     mobileButton.BackgroundTransparency = 0.2
     mobileButton.BackgroundColor3 = Color3.fromRGB(140, 30, 255)
     mobileButton.Image = "rbxassetid://134381155775118"
@@ -1087,46 +1129,76 @@ if ResponsiveUI.State.IsMobile then
     mStroke.Transparency = 0.3
     mStroke.Parent = mobileButton
     
-    local btnDragging = false
-    local btnDragStart = nil
-    local btnStartPos = nil
+    -- Make button draggable
+    local dragging = false
+    local dragStart = nil
+    local buttonStart = nil
     
     mobileButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            btnDragging = true
-            btnDragStart = input.Position
-            btnStartPos = mobileButton.Position
-            TweenService:Create(mobileButton, TweenInfo.new(0.1), {Size = UDim2.fromOffset(45, 45)}):Play()
+        if input.UserInputType == Enum.UserInputType.Touch or 
+           input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            buttonStart = mobileButton.Position
+            
+            -- Visual feedback
+            TweenService:Create(mobileButton, TweenInfo.new(0.1), {
+                Size = UDim2.fromOffset(45, 45)
+            }):Play()
         end
     end)
     
     UIS.InputChanged:Connect(function(input)
-        if btnDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
-            local delta = input.Position - btnDragStart
-            mobileButton.Position = UDim2.new(btnStartPos.X.Scale, btnStartPos.X.Offset + delta.X, btnStartPos.Y.Scale, btnStartPos.Y.Offset + delta.Y)
+        if dragging and (input.UserInputType == Enum.UserInputType.Touch or 
+                        input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - dragStart
+            mobileButton.Position = UDim2.new(
+                buttonStart.X.Scale,
+                buttonStart.X.Offset + delta.X,
+                buttonStart.Y.Scale,
+                buttonStart.Y.Offset + delta.Y
+            )
         end
     end)
     
     UIS.InputEnded:Connect(function(input)
-        if btnDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
-            btnDragging = false
-            TweenService:Create(mobileButton, TweenInfo.new(0.1), {Size = UDim2.fromOffset(50, 50)}):Play()
+        if dragging and (input.UserInputType == Enum.UserInputType.Touch or 
+                        input.UserInputType == Enum.UserInputType.MouseButton1) then
+            dragging = false
             
-            if (input.Position - btnDragStart).Magnitude < 10 then
+            -- Restore size
+            TweenService:Create(mobileButton, TweenInfo.new(0.1), {
+                Size = UDim2.fromOffset(50, 50)
+            }):Play()
+            
+            -- If it was a tap (not drag), toggle menu
+            if (input.Position - dragStart).Magnitude < 10 then
                 menuOpen = not menuOpen
                 root.Visible = menuOpen
             else
+                -- Clamp to screen bounds
                 local buttonSize = mobileButton.AbsoluteSize
                 local screenSize = Camera.ViewportSize
+                
+                -- Clamp X
                 local minX = buttonSize.X / 2
                 local maxX = screenSize.X - buttonSize.X / 2
                 local currentX = mobileButton.AbsolutePosition.X + buttonSize.X / 2
                 local clampedX = math.clamp(currentX, minX, maxX)
+                
+                -- Clamp Y
                 local minY = buttonSize.Y / 2
                 local maxY = screenSize.Y - buttonSize.Y / 2
                 local currentY = mobileButton.AbsolutePosition.Y + buttonSize.Y / 2
                 local clampedY = math.clamp(currentY, minY, maxY)
-                mobileButton.Position = UDim2.new(0, clampedX - buttonSize.X / 2, 0, clampedY - buttonSize.Y / 2)
+                
+                -- Convert back to scale position
+                mobileButton.Position = UDim2.new(
+                    0,
+                    clampedX - buttonSize.X / 2,
+                    0,
+                    clampedY - buttonSize.Y / 2
+                )
             end
         end
     end)
@@ -1154,8 +1226,8 @@ UIS.InputBegan:Connect(function(input,gp)
             if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
             if id=="esp"then Features.setESP(not Features.espEnabled)end
             if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
-            if id=="flick"then doFlick() end
-            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled) end
+            if id=="flick"then doFlick()end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
         end
     end
 end)
@@ -1167,8 +1239,8 @@ UIS.InputEnded:Connect(function(input)
             if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
             if id=="esp"then Features.setESP(not Features.espEnabled)end
             if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
-            if id=="flick"then doFlick() end
-            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled) end
+            if id=="flick"then doFlick()end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
         end
     end
 end)
@@ -1179,19 +1251,6 @@ pcall(function()
     local saved = getAllConfigs()
     if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
         loadConfig(saved["__autoLoad"])
-    end
-end)
-
--- Screen resize handler
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-    ResponsiveUI.DetectDevice()
-    local newWidth, newHeight, newSidebarWidth = ResponsiveUI.CalculateSize()
-    root.Size = UDim2.fromOffset(newWidth, newHeight)
-    sidebar.Size = UDim2.new(0, newSidebarWidth, 1, 0)
-    main.Size = UDim2.new(1, -newSidebarWidth, 1, 0)
-    main.Position = UDim2.fromOffset(newSidebarWidth, 0)
-    if mobileButton then
-        mobileButton.Visible = ResponsiveUI.State.IsMobile
     end
 end)
 
