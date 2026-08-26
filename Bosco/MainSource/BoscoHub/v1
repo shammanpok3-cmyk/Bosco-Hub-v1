@@ -1044,12 +1044,489 @@ if navBtns["Triggerbot"]then setNavActive(navBtns["Triggerbot"])end
 
 -- MOBILE BUTTON
 local mobileButton = nil
+-- ============================================
+-- RESPONSIVE UI SYSTEM
+-- ============================================
+local ResponsiveUI = {}
+
+ResponsiveUI.Config = {
+    Devices = {
+        Mobile = {
+            UIScale = 0.95,
+            SidebarWidth = 180,
+            FontScale = 0.9,
+            RootWidth = 420,
+            RootHeight = 600,
+        },
+        Tablet = {
+            UIScale = 0.95,
+            SidebarWidth = 190,
+            FontScale = 0.95,
+            RootWidth = 750,
+            RootHeight = 620,
+        },
+        PC = {
+            UIScale = 1.0,
+            SidebarWidth = 200,
+            FontScale = 1.0,
+            RootWidth = 880,
+            RootHeight = 540,
+        }
+    }
+}
+
+ResponsiveUI.State = {
+    Device = "PC",
+    Scale = 1,
+    IsMobile = false,
+}
+
+function ResponsiveUI.DetectDevice()
+    local viewportSize = Camera.ViewportSize
+    local width = viewportSize.X
+    
+    if width <= 800 or (UIS.TouchEnabled and width <= 1024) then
+        ResponsiveUI.State.Device = "Mobile"
+    elseif width <= 1200 then
+        ResponsiveUI.State.Device = "Tablet"
+    else
+        ResponsiveUI.State.Device = "PC"
+    end
+    
+    ResponsiveUI.State.IsMobile = (ResponsiveUI.State.Device == "Mobile")
+    local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
+    ResponsiveUI.State.Scale = deviceConfig.UIScale
+    
+    return ResponsiveUI.State.Device
+end
+
+function ResponsiveUI.CalculateSize()
+    local screenWidth = Camera.ViewportSize.X
+    local screenHeight = Camera.ViewportSize.Y
+    local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
+    
+    local maxWidth = screenWidth * 0.95
+    local maxHeight = screenHeight * 0.9
+    
+    local width = deviceConfig.RootWidth
+    if width > maxWidth then width = maxWidth end
+    
+    local height = deviceConfig.RootHeight
+    if height > maxHeight then height = maxHeight end
+    
+    if ResponsiveUI.State.IsMobile then
+        width = screenWidth - 20
+        height = math.min(deviceConfig.RootHeight, maxHeight)
+    end
+    
+    local sidebarWidth = math.min(deviceConfig.SidebarWidth, width * 0.35)
+    return width, height, sidebarWidth
+end
+
+ResponsiveUI.DetectDevice()
+
+-- ============================================
+-- UI CREATION
+-- ============================================
+for _,c in ipairs(PGui:GetChildren()) do if c.Name=="BoscoHub" and not script:IsDescendantOf(c) then c:Destroy() end end
+
+local C={bg=Color3.fromRGB(4,0,8),panel=Color3.fromRGB(10,2,16),row=Color3.fromRGB(16,4,22),sidebarBg=Color3.fromRGB(6,0,12),topBar=Color3.fromRGB(8,0,14),accent=Color3.fromRGB(140,30,255),accentBrt=Color3.fromRGB(180,80,255),accent2=Color3.fromRGB(255,60,120),activeDim=Color3.fromRGB(40,8,60),sep=Color3.fromRGB(100,20,160),text=Color3.fromRGB(255,255,255),textDim=Color3.fromRGB(170,130,200),sliderTrack=Color3.fromRGB(25,5,40),toggleOff=Color3.fromRGB(25,25,40)}
+local FONT=Enum.Font.Gotham;local FONT_MED=Enum.Font.GothamMedium;local FONT_BOL=Enum.Font.GothamBold
+local CR=UDim.new(0,8);local CR_SM=UDim.new(0,6);local CR_XL=UDim.new(0,14)
+
+local function mkCorner(p,r)local c=Instance.new("UICorner");c.CornerRadius=r or CR;c.Parent=p;return c end
+local function mkStroke(p,col,tr,th)local s=Instance.new("UIStroke");s.Color=col or C.sep;s.Transparency=tr or 0.5;s.Thickness=th or 1;s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border;s.Parent=p;return s end
+local function mkPad(p,t,r,b,l)local x=Instance.new("UIPadding");x.PaddingTop=UDim.new(0,t or 12);x.PaddingRight=UDim.new(0,r or 12);x.PaddingBottom=UDim.new(0,b or 12);x.PaddingLeft=UDim.new(0,l or 12);x.Parent=p;return x end
+local function mkGradient(p,c1,c2)local g=Instance.new("UIGradient");g.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,c1 or C.accent),ColorSequenceKeypoint.new(1,c2 or C.accentBrt)});g.Parent=p;return g end
+local function mkLabel(props)local l=Instance.new("TextLabel");l.Name=props.Name or"Lbl";l.BackgroundTransparency=1;l.Font=props.Font or FONT;l.TextSize=props.TextSize or 13;l.TextColor3=props.TextColor or C.text;l.Text=props.Text or"";l.TextXAlignment=props.TextXAlignment or Enum.TextXAlignment.Left;l.TextYAlignment=Enum.TextYAlignment.Center;if props.Size then l.Size=props.Size end;if props.Position then l.Position=props.Position end;if props.LayoutOrder then l.LayoutOrder=props.LayoutOrder end;l.Parent=props.Parent;return l end
+local function mkSep(parent,lo)local l=Instance.new("Frame");l.Name="Sep";l.Size=UDim2.new(1,0,0,1);l.BackgroundColor3=C.sep;l.BackgroundTransparency=0.4;l.BorderSizePixel=0;l.LayoutOrder=lo or 0;l.Parent=parent;return l end
+
+local gui=Instance.new("ScreenGui");gui.Name="BoscoHub";gui.ResetOnSpawn=false;gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling;gui.IgnoreGuiInset=true;gui.DisplayOrder=100;gui.Parent=PGui
+
+local function showToast(msg)
+    local t=gui:FindFirstChild("Toast");if t then t:Destroy()end
+    local toast=Instance.new("Frame");toast.Name="Toast";toast.BackgroundColor3=C.panel;toast.BorderSizePixel=0;toast.Size=UDim2.fromOffset(370,40);toast.Position=UDim2.new(0.5,0,1,-65);toast.AnchorPoint=Vector2.new(0.5,1);toast.ZIndex=200;toast.Parent=gui
+    mkCorner(toast,CR);mkStroke(toast,C.accent,0,1.5);mkGradient(toast,C.accent,C.accent2)
+    mkLabel({Parent=toast,Text=msg,TextSize=12,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.fromScale(1,1)})
+    task.delay(2.5,function()if toast.Parent then toast:Destroy()end end)
+end
+
+-- Calculate responsive size
+local rootWidth, rootHeight, sidebarWidth = ResponsiveUI.CalculateSize()
+
+local root=Instance.new("Frame");root.Name="Root";root.BackgroundColor3=C.bg;root.BorderSizePixel=0;root.Size=UDim2.fromOffset(rootWidth,rootHeight)
+root.Position=UDim2.new(0.5,0,0.5,0);root.AnchorPoint=Vector2.new(0.5,0.5);root.ClipsDescendants=true;root.ZIndex=999;root.Visible=false;root.Parent=gui
+mkCorner(root,CR_XL);mkStroke(root,C.accent,0,2);mkGradient(root,C.bg,Color3.fromRGB(8,0,20))
+
+local topBar=Instance.new("Frame");topBar.Name="TopBar";topBar.BackgroundColor3=C.topBar;topBar.BorderSizePixel=0;topBar.Size=UDim2.new(1,0,0,48);topBar.ZIndex=10;topBar.Parent=root
+mkCorner(topBar,UDim.new(0,14))
+local tbBorder=Instance.new("Frame");tbBorder.Size=UDim2.new(1,0,0,2);tbBorder.Position=UDim2.new(0,0,1,-2);tbBorder.BackgroundColor3=C.accent;tbBorder.BorderSizePixel=0;tbBorder.ZIndex=11;tbBorder.Parent=topBar;mkGradient(tbBorder,C.accent,C.accent2)
+mkPad(topBar,0,16,0,16)
+
+local dragging,dragStart,dragOrigin=false,nil,nil
+topBar.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true;dragStart=i.Position;dragOrigin=root.Position;i.Changed:Connect(function()if i.UserInputState==Enum.UserInputState.End then dragging=false end end)end end)
+UIS.InputChanged:Connect(function(i)if dragging and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then local d=i.Position-dragStart;root.Position=UDim2.new(dragOrigin.X.Scale,dragOrigin.X.Offset+d.X,dragOrigin.Y.Scale,dragOrigin.Y.Offset+d.Y)end end)
+
+local wCtrl=Instance.new("Frame");wCtrl.BackgroundTransparency=1;wCtrl.Size=UDim2.fromOffset(60,16);wCtrl.Parent=topBar
+local wl=Instance.new("UIListLayout");wl.FillDirection=Enum.FillDirection.Horizontal;wl.Padding=UDim.new(0,7);wl.VerticalAlignment=Enum.VerticalAlignment.Center;wl.Parent=wCtrl
+local winClose,winMin
+for i,col in ipairs({Color3.fromRGB(255,70,70),Color3.fromRGB(255,180,50),Color3.fromRGB(60,220,80)})do local d=Instance.new("TextButton");d.Size=UDim2.fromOffset(14,14);d.BackgroundColor3=col;d.Text="";d.AutoButtonColor=false;mkCorner(d,UDim.new(1,0));d.Parent=wCtrl;if i==1 then winClose=d elseif i==2 then winMin=d end end
+
+local titleLabel=Instance.new("TextLabel");titleLabel.BackgroundTransparency=1;titleLabel.Text="BOSCO HUB V1";titleLabel.Font=FONT_BOL;titleLabel.TextSize=14;titleLabel.TextColor3=C.accentBrt;titleLabel.TextXAlignment=Enum.TextXAlignment.Center;titleLabel.Size=UDim2.new(1,-120,1,0);titleLabel.Position=UDim2.new(0,60,0,0);titleLabel.Parent=topBar
+
+local body=Instance.new("Frame");body.BackgroundTransparency=1;body.Name="Body";body.Size=UDim2.new(1,0,1,-48);body.Position=UDim2.fromOffset(0,48);body.ZIndex=4;body.Parent=root
+local sidebar=Instance.new("Frame");sidebar.BackgroundColor3=C.sidebarBg;sidebar.BorderSizePixel=0;sidebar.Size=UDim2.new(0,sidebarWidth,1,0);sidebar.ZIndex=5;sidebar.Parent=body
+local sbLine=Instance.new("Frame");sbLine.Size=UDim2.new(0,2,1,0);sbLine.Position=UDim2.new(1,-2,0,0);sbLine.BackgroundColor3=C.accent;sbLine.BorderSizePixel=0;sbLine.Parent=sidebar;mkGradient(sbLine,C.accent,C.accent2)
+local sbScroll=Instance.new("ScrollingFrame");sbScroll.BackgroundTransparency=1;sbScroll.BorderSizePixel=0;sbScroll.Size=UDim2.fromScale(1,1);sbScroll.CanvasSize=UDim2.new(0,0,0,0);sbScroll.ScrollBarThickness=3;sbScroll.ScrollBarImageColor3=C.accent;sbScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;sbScroll.Parent=sidebar
+mkPad(sbScroll,12,10,12,10)
+local sbLL=Instance.new("UIListLayout");sbLL.Padding=UDim.new(0,4);sbLL.SortOrder=Enum.SortOrder.LayoutOrder;sbLL.Parent=sbScroll
+
+-- Logo
+local brandBlock=Instance.new("Frame");brandBlock.BackgroundTransparency=1;brandBlock.Size=UDim2.new(1,0,0,100);brandBlock.LayoutOrder=0;brandBlock.Parent=sbScroll
+local brandLL=Instance.new("UIListLayout");brandLL.Padding=UDim.new(0,2);brandLL.HorizontalAlignment=Enum.HorizontalAlignment.Center;brandLL.SortOrder=Enum.SortOrder.LayoutOrder;brandLL.Parent=brandBlock
+local logo=Instance.new("ImageLabel",brandBlock)
+logo.Size=UDim2.new(0,60,0,60);logo.BackgroundTransparency=1
+logo.Image="rbxassetid://134381155775118"
+logo.ScaleType=Enum.ScaleType.Fit
+logo.LayoutOrder=1
+mkLabel({Parent=brandBlock,Text="BOSCO HUB",Font=FONT_BOL,TextSize=16,TextColor=C.accentBrt,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,20),LayoutOrder=2})
+mkLabel({Parent=brandBlock,Text="V1  |  by Bosco",Font=FONT_BOL,TextSize=10,TextColor=C.accent2,TextXAlignment=Enum.TextXAlignment.Center,Size=UDim2.new(1,0,0,16),LayoutOrder=3})
+
+local navBtns={};local activeNav=nil
+local function setNavActive(btn)if activeNav then activeNav.BackgroundColor3=Color3.fromRGB(0,0,0);activeNav.BackgroundTransparency=1;activeNav.TextColor3=C.textDim end;activeNav=btn;btn.BackgroundColor3=C.activeDim;btn.BackgroundTransparency=0;btn.TextColor3=C.accentBrt end
+local function mkNav(text,lo,onClick)local btn=Instance.new("TextButton");btn.Name=text:gsub(" ","");btn.LayoutOrder=lo;btn.Size=UDim2.new(1,0,0,32);btn.BackgroundColor3=Color3.fromRGB(0,0,0);btn.BackgroundTransparency=1;btn.Font=FONT_MED;btn.TextSize=12;btn.Text="  "..text;btn.TextColor3=C.textDim;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.sep,0.6,1);btn.Parent=sbScroll;navBtns[text]=btn;btn.MouseButton1Click:Connect(function()setNavActive(btn);if onClick then onClick()end end);return btn end
+local function mkNavHdr(text,lo)mkLabel({Parent=sbScroll,Text=text,Font=FONT_BOL,TextSize=9,TextColor=C.accent,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)})end
+
+local main=Instance.new("Frame");main.Name="Main";main.BackgroundColor3=C.panel;main.BorderSizePixel=0;main.Size=UDim2.new(1,-sidebarWidth,1,0);main.Position=UDim2.fromOffset(sidebarWidth,0);main.ZIndex=4;main.Parent=body
+mkCorner(main,UDim.new(0,8))
+local mainScroll=Instance.new("ScrollingFrame");mainScroll.BackgroundTransparency=1;mainScroll.BorderSizePixel=0;mainScroll.Size=UDim2.fromScale(1,1);mainScroll.CanvasSize=UDim2.new(0,0,0,0);mainScroll.ScrollBarThickness=3;mainScroll.ScrollBarImageColor3=C.accent;mainScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y;mainScroll.Parent=main
+mkPad(mainScroll,18,18,18,18)
+local mainLL=Instance.new("UIListLayout");mainLL.Padding=UDim.new(0,12);mainLL.SortOrder=Enum.SortOrder.LayoutOrder;mainLL.Parent=mainScroll
+
+local function secHead(text,order)return mkLabel({Parent=mainScroll,Text=text:upper(),Font=FONT_BOL,TextSize=10,TextColor=C.accent,LayoutOrder=order,Size=UDim2.new(1,0,0,20)})end
+local function mkRow(title,lo,h)local f=Instance.new("Frame");f.Name=title;f.BackgroundColor3=C.row;f.BorderSizePixel=0;f.Size=UDim2.new(1,0,0,h or 54);f.LayoutOrder=lo;f.Parent=mainScroll;mkCorner(f,CR);mkStroke(f,C.sep,0.4,1);mkPad(f,12,14,12,14);return f end
+
+local function clearContent()
+    local toRemove = {}
+    for _, ch in ipairs(mainScroll:GetChildren()) do
+        if ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton") or ch:IsA("TextBox") or ch:IsA("ScrollingFrame") then
+            table.insert(toRemove, ch)
+        end
+    end
+    for _, ch in ipairs(toRemove) do ch:Destroy() end
+    mainScroll.CanvasPosition = Vector2.zero
+end
+
+local function createToggle(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-56,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,16)})
+    local track=Instance.new("TextButton");track.AnchorPoint=Vector2.new(1,0.5);track.Position=UDim2.new(1,0,0.5,0);track.Size=UDim2.fromOffset(48,24);track.Text="";track.AutoButtonColor=false;mkCorner(track,UDim.new(1,0));track.Parent=row
+    local knob=Instance.new("Frame");knob.Size=UDim2.fromOffset(18,18);knob.BorderSizePixel=0;mkCorner(knob,UDim.new(1,0));knob.Parent=track
+    local on=props.default==true
+    local function paint()for _,v in ipairs(track:GetChildren())do if v:IsA("UIGradient")then v:Destroy()end end;if on then mkGradient(track,C.accent,C.accentBrt);knob.Position=UDim2.new(1,-22,0.5,-9);knob.BackgroundColor3=Color3.fromRGB(255,255,255)else track.BackgroundColor3=C.toggleOff;knob.Position=UDim2.new(0,4,0.5,-9);knob.BackgroundColor3=Color3.fromRGB(180,180,200)end end
+    paint()
+    track.MouseButton1Click:Connect(function()on=not on;paint();TweenService:Create(knob,TweenInfo.new(0.15,Enum.EasingStyle.Quad),{Position=on and UDim2.new(1,-22,0.5,-9)or UDim2.new(0,4,0.5,-9)}):Play();if props.onChange then props.onChange(on)end end)
+    return row
+end
+
+local function createDualSlider(props)
+    local row=mkRow(props.title,props.layoutOrder,76)
+    mkLabel({Parent=row,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.5,0,0,18)})
+    local textBox=Instance.new("TextBox");textBox.Size=UDim2.fromOffset(55,22);textBox.Position=UDim2.new(1,-55,0,0);textBox.BackgroundColor3=C.activeDim;textBox.TextColor3=C.text;textBox.Font=FONT_MED;textBox.TextSize=12;textBox.Text=tostring(props.default);mkCorner(textBox,CR_SM);mkStroke(textBox,C.accent,0,1);textBox.Parent=row
+    if props.desc then mkLabel({Parent=row,Text=props.desc,TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,22),Size=UDim2.new(1,0,0,14)})end
+    local trk=Instance.new("Frame");trk.BackgroundColor3=C.sliderTrack;trk.Position=UDim2.fromOffset(0,44);trk.Size=UDim2.new(1,0,0,7);mkCorner(trk,UDim.new(1,0));trk.Parent=row
+    local fill=Instance.new("Frame");fill.Size=UDim2.fromScale((props.default-props.min)/(props.max-props.min),1);mkCorner(fill,UDim.new(1,0));fill.Parent=trk;mkGradient(fill,C.accent,C.accentBrt)
+    local hit=Instance.new("TextButton");hit.BackgroundTransparency=1;hit.Text="";hit.Size=UDim2.new(1,0,0,22);hit.Position=UDim2.fromOffset(0,36);hit.Parent=row
+    mkLabel({Parent=row,Text=tostring(props.min),TextSize=9,TextColor=C.textDim,Position=UDim2.fromOffset(0,56),Size=UDim2.fromOffset(30,14)})
+    mkLabel({Parent=row,Text=tostring(props.max),TextSize=9,TextColor=C.textDim,Position=UDim2.new(1,-30,0,56),Size=UDim2.fromOffset(30,14),TextXAlignment=Enum.TextXAlignment.Right})
+    local function updateValue(value)value=math.clamp(tonumber(value)or props.default,props.min,props.max);fill.Size=UDim2.fromScale((value-props.min)/(props.max-props.min),1);textBox.Text=tostring(math.floor(value*100)/100);if props.onChange then props.onChange(value)end end
+    local drag=false
+    hit.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=true;updateValue(props.min+((i.Position.X-trk.AbsolutePosition.X)/trk.AbsoluteSize.X)*(props.max-props.min))end end)
+    UIS.InputChanged:Connect(function(i)if drag then updateValue(props.min+((i.Position.X-trk.AbsolutePosition.X)/trk.AbsoluteSize.X)*(props.max-props.min))end end)
+    UIS.InputEnded:Connect(function()drag=false end)
+    textBox.FocusLost:Connect(function(ep)if ep then updateValue(tonumber(textBox.Text))end end)
+    updateValue(props.default)
+    return row
+end
+
+local function createCycleButton(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    mkLabel({Parent=row,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(0.6,0,0,18)})
+    mkLabel({Parent=row,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,14)})
+    local opts=props.options or{};local currentIndex=1
+    for i,o in ipairs(opts)do if o==props.default then currentIndex=i;break end end
+    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(120,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT;btn.TextSize=12;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";btn.TextColor3=C.accentBrt;btn.TextXAlignment=Enum.TextXAlignment.Left;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row
+    btn.MouseButton1Click:Connect(function()currentIndex=currentIndex+1;if currentIndex>#opts then currentIndex=1 end;btn.Text="  "..tostring(opts[currentIndex]).."  ↻";if props.onChange then props.onChange(opts[currentIndex])end end)
+    return row
+end
+
+local function createActionRow(props)
+    local row=mkRow(props.title,props.layoutOrder,52)
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-92,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=props.title,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Text=props.desc or"",TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,20),Size=UDim2.new(1,0,0,16)})
+    local btn=Instance.new("TextButton");btn.AnchorPoint=Vector2.new(1,0.5);btn.Position=UDim2.new(1,0,0.5,0);btn.Size=UDim2.fromOffset(82,28);btn.BackgroundColor3=C.activeDim;btn.Font=FONT_MED;btn.TextSize=12;btn.Text=props.buttonText;btn.TextColor3=C.text;btn.AutoButtonColor=false;mkCorner(btn,CR_SM);mkStroke(btn,C.accent,0,1);btn.Parent=row;mkGradient(btn,C.accent,Color3.fromRGB(100,20,200))
+    btn.MouseButton1Click:Connect(function()if props.onClick then props.onClick()end end)
+    return row
+end
+
+local listeningFor=nil;local kbBtns={}
+local function createKeybindRow(props)
+    local id=props.id;local bind=Keybinds[id]
+    local row=mkRow(bind.label,props.layoutOrder,54);row.Name=id
+    local info=Instance.new("Frame");info.BackgroundTransparency=1;info.Size=UDim2.new(1,-196,1,0);info.Parent=row
+    mkLabel({Parent=info,Text=bind.label,Font=FONT_MED,TextSize=13,Position=UDim2.fromOffset(0,0),Size=UDim2.new(1,0,0,18)})
+    mkLabel({Parent=info,Name="CK",Text="Key: "..keyName(bind.key),TextSize=10,TextColor=C.textDim,Position=UDim2.fromOffset(0,21),Size=UDim2.new(1,0,0,16)})
+    local hb=Instance.new("TextButton");hb.AnchorPoint=Vector2.new(1,0.5);hb.Position=UDim2.new(1,0,0.5,0);hb.Size=UDim2.fromOffset(72,26);hb.Font=FONT;hb.TextSize=11;hb.Text=bind.holdMode and"HOLD"or"TOGGLE";hb.BackgroundColor3=bind.holdMode and C.accent or Color3.fromRGB(35,8,50);hb.TextColor3=C.text;hb.AutoButtonColor=false;mkCorner(hb,CR_SM);hb.Parent=row;if bind.holdMode then mkGradient(hb,C.accent,C.accentBrt)end
+    hb.MouseButton1Click:Connect(function()bind.holdMode=not bind.holdMode;hb.Text=bind.holdMode and"HOLD"or"TOGGLE";hb.BackgroundColor3=bind.holdMode and C.accent or Color3.fromRGB(35,8,50)end)
+    local kb=Instance.new("TextButton");kb.AnchorPoint=Vector2.new(1,0.5);kb.Position=UDim2.new(1,-80,0.5,0);kb.Size=UDim2.fromOffset(72,26);kb.Font=FONT_MED;kb.TextSize=12;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35);kb.TextColor3=C.text;kb.AutoButtonColor=false;mkCorner(kb,CR_SM);mkStroke(kb,C.accent,0,1);kb.Parent=row;kbBtns[id]=kb
+    kb.MouseButton1Click:Connect(function()if listeningFor==id then listeningFor=nil;kb.Text=keyName(bind.key);kb.BackgroundColor3=Color3.fromRGB(22,4,35)else if listeningFor and kbBtns[listeningFor]then kbBtns[listeningFor].Text=keyName(Keybinds[listeningFor].key);kbBtns[listeningFor].BackgroundColor3=Color3.fromRGB(22,4,35)end;listeningFor=id;kb.Text="[press key]";kb.BackgroundColor3=C.activeDim end end)
+    return row
+end
+
+-- PAGES
+local function renderTriggerbot()
+    clearContent();local lo=1;local s=Features.triggerbotSettings
+    secHead("🎯 Triggerbot",lo);lo+=1
+    createToggle({title="Enable Triggerbot",desc="Auto fire when crosshair on enemy",layoutOrder=lo,default=Features.triggerbotEnabled,onChange=function(on)Features.setTriggerbot(on)end});lo+=1
+    createDualSlider({title="Fire Rate",desc="Delay between shots",layoutOrder=lo,default=s.FireRate,min=0,max=1,onChange=function(v)s.FireRate=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum fire distance",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createToggle({title="Check Deflection",desc="Don't shoot deflecting Katana",layoutOrder=lo,default=s.CheckDeflection,onChange=function(on)s.CheckDeflection=on end});lo+=1
+    createToggle({title="Check Spawn Shield",desc="Don't shoot spawn shield",layoutOrder=lo,default=s.CheckSpawnShield,onChange=function(on)s.CheckSpawnShield=on end});lo+=1
+    createToggle({title="Team Check",desc="Don't shoot teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+end
+
+local function renderSilentAim()
+    clearContent();local lo=1;local s=Features.silentAimSettings
+    secHead("🔇 Silent Aim",lo);lo+=1
+    createToggle({title="Enable Silent Aim",desc="Hit targets without aiming",layoutOrder=lo,default=Features.silentAimEnabled,onChange=function(on)Features.setSilentAim(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Silent aim field of view",layoutOrder=lo,default=s.FOV,min=50,max=1000,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum targeting range",layoutOrder=lo,default=s.MaxDistance,min=50,max=2000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createCycleButton({title="Hit Part",desc="Which body part to hit",layoutOrder=lo,default=s.HitPart,options={"Head","HumanoidRootPart","UpperTorso"},onChange=function(v)s.HitPart=v end});lo+=1
+    createToggle({title="Team Check",desc="Don't hit teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+end
+
+local function renderFlick()
+    clearContent();local lo=1;local s=Features.flickSettings
+    secHead("💨 Flick",lo);lo+=1
+    createToggle({title="Enable Flick",desc="Flick to nearest head and shoot",layoutOrder=lo,default=Features.flickEnabled,onChange=function(on)Features.setFlick(on)end});lo+=1
+    createDualSlider({title="FOV",desc="Flick detection radius",layoutOrder=lo,default=s.FOV,min=50,max=500,onChange=function(v)s.FOV=v end});lo+=1
+    createDualSlider({title="Speed",desc="Flick speed (25 = default)",layoutOrder=lo,default=s.Speed,min=5,max=50,onChange=function(v)s.Speed=v end});lo+=1
+    createDualSlider({title="Max Distance",desc="Maximum flick range",layoutOrder=lo,default=s.MaxDistance,min=50,max=1000,onChange=function(v)s.MaxDistance=v end});lo+=1
+    createToggle({title="Wall Check",desc="Only flick to visible targets",layoutOrder=lo,default=s.WallCheck,onChange=function(on)s.WallCheck=on end});lo+=1
+    createToggle({title="Team Check",desc="Don't flick to teammates",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on end});lo+=1
+    createToggle({title="Show FOV",desc="Draw FOV circle",layoutOrder=lo,default=s.ShowFOV,onChange=function(on)s.ShowFOV=on end});lo+=1
+end
+
+local function renderInfiniteJump()
+    clearContent();local lo=1
+    secHead("🏃 Infinite Jump",lo);lo+=1
+    createToggle({title="Enable Infinite Jump",desc="Hold space to fly",layoutOrder=lo,default=Features.infiniteJumpEnabled,onChange=function(on)Features.setInfiniteJump(on)end});lo+=1
+end
+
+local function renderESP()
+    clearContent();local lo=1;local s=Features.espSettings
+    secHead("👁 ESP",lo);lo+=1
+    createToggle({title="Enable ESP",desc="See enemies through walls",layoutOrder=lo,default=Features.espEnabled,onChange=function(on)Features.setESP(on)end});lo+=1
+    createToggle({title="Box ESP",desc="Draw boxes around enemies",layoutOrder=lo,default=s.Box,onChange=function(on)s.Box=on;Features.setESPSetting("Box",on)end});lo+=1
+    createToggle({title="Filled Box",desc="Fill the ESP boxes",layoutOrder=lo,default=s.BoxFilled,onChange=function(on)s.BoxFilled=on;Features.setESPSetting("BoxFilled",on)end});lo+=1
+    createToggle({title="Name ESP",desc="Show enemy names",layoutOrder=lo,default=s.Name,onChange=function(on)s.Name=on;Features.setESPSetting("Name",on)end});lo+=1
+    createToggle({title="Distance ESP",desc="Show distance to enemies",layoutOrder=lo,default=s.Distance,onChange=function(on)s.Distance=on;Features.setESPSetting("Distance",on)end});lo+=1
+    createToggle({title="Team Check",desc="Only show enemies",layoutOrder=lo,default=s.TeamCheck,onChange=function(on)s.TeamCheck=on;Features.setESPSetting("TeamCheck",on)end});lo+=1
+end
+
+local function renderUnlockAll()
+    clearContent();local lo=1
+    secHead("🎨 Cosmetics",lo);lo+=1
+    createActionRow({title="Unlock All Cosmetics",desc="Press to unlock all skins",layoutOrder=lo,buttonText="🔓 UNLOCK",onClick=function()Features.setUnlockAll(true);showToast("Unlocking...")end});lo+=1
+end
+
+local function renderStaffDetector()
+    clearContent();local lo=1
+    secHead("🛡 Staff Detector",lo);lo+=1
+    createToggle({title="Enable Staff Detector",desc="Warns when Rivals moderators join",layoutOrder=lo,default=Features.staffDetectorEnabled,onChange=function(on)Features.setStaffDetector(on);if on then showToast("Staff Detector active!")end end});lo+=1
+end
+
+local function renderStretchRes()
+    clearContent();local lo=1
+    secHead("📐 Stretch Resolution",lo);lo+=1
+    createToggle({title="Enable Stretch Res",desc="Makes enemies wider (easier to hit)",layoutOrder=lo,default=Features.stretchResEnabled,onChange=function(on)Features.setStretchRes(on)end});lo+=1
+    createDualSlider({title="Stretch Amount",desc="1.0 = normal | 0.0 = max stretch",layoutOrder=lo,default=Features.stretchResValue,min=0,max=1,onChange=function(v)Features.stretchResValue=v end});lo+=1
+end
+
+local function renderConfig()
+    clearContent();local lo=1
+    secHead("📂 Config",lo);lo+=1
+    local selectedConfig=nil;local autoLoadConfig=nil
+    local savedConfigs=getAllConfigs()
+    if savedConfigs["__autoLoad"]then autoLoadConfig=savedConfigs["__autoLoad"]end
+    local selectedLabel=mkLabel({Parent=mainScroll,Text="Selected: None",Font=FONT_MED,TextSize=11,TextColor=C.accentBrt,LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
+    local autoLoadLabel=mkLabel({Parent=mainScroll,Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set",Font=FONT_MED,TextSize=11,TextColor=Color3.fromRGB(255,200,50),LayoutOrder=lo,Size=UDim2.new(1,0,0,20)});lo+=1
+    local listFrame=Instance.new("ScrollingFrame",mainScroll)
+    listFrame.Size=UDim2.new(1,0,0,150);listFrame.LayoutOrder=lo;lo+=1
+    listFrame.BackgroundTransparency=1;listFrame.BorderSizePixel=0;listFrame.CanvasSize=UDim2.new(0,0,0,0);listFrame.AutomaticCanvasSize=Enum.AutomaticSize.Y;listFrame.ScrollBarThickness=3;listFrame.ScrollBarImageColor3=C.accent
+    local listLL=Instance.new("UIListLayout",listFrame);listLL.Padding=UDim.new(0,4);listLL.SortOrder=Enum.SortOrder.LayoutOrder
+    local function refreshList()
+        for _,child in ipairs(listFrame:GetChildren())do if child:IsA("TextButton")then child:Destroy()end end
+        local configs=getAllConfigs();local found=false
+        for name in pairs(configs)do
+            if name:sub(1,2)~="__"then
+                local btn=Instance.new("TextButton",listFrame)
+                btn.Size=UDim2.new(1,0,0,32);btn.Text=(name==autoLoadConfig and"  ⭐ "or"  📁 ")..name
+                btn.Font=FONT_MED;btn.TextSize=12;btn.TextColor3=C.text;btn.TextXAlignment=Enum.TextXAlignment.Left
+                btn.BackgroundColor3=(selectedConfig==name)and C.accent or C.row;btn.BorderSizePixel=0;mkCorner(btn,CR_SM)
+                if selectedConfig==name then found=true end
+                btn.MouseButton1Click:Connect(function()selectedConfig=name;refreshList()end)
+            end
+        end
+        if not found then selectedConfig=nil end
+        selectedLabel.Text=selectedConfig and"Selected: "..selectedConfig or"Selected: None"
+        autoLoadLabel.Text=autoLoadConfig and"Auto Load: "..autoLoadConfig or"Auto Load: None set"
+    end
+    refreshList()
+    local nameInput=Instance.new("TextBox",mainScroll)
+    nameInput.Size=UDim2.new(1,0,0,34);nameInput.LayoutOrder=lo;lo+=1
+    nameInput.PlaceholderText="Config name...";nameInput.Text="";nameInput.TextColor3=C.text
+    nameInput.BackgroundColor3=C.activeDim;nameInput.Font=FONT;nameInput.TextSize=13;nameInput.BorderSizePixel=0
+    mkCorner(nameInput,CR_SM);mkStroke(nameInput,C.accent,0,1)
+    local btnRow1=Instance.new("Frame",mainScroll);btnRow1.BackgroundTransparency=1;btnRow1.Size=UDim2.new(1,0,0,34);btnRow1.LayoutOrder=lo;lo+=1
+    local btnLL1=Instance.new("UIListLayout",btnRow1);btnLL1.FillDirection=Enum.FillDirection.Horizontal;btnLL1.Padding=UDim.new(0,8)
+    local createBtn=Instance.new("TextButton",btnRow1)
+    createBtn.Size=UDim2.new(0.25,-6,1,0);createBtn.Text="✚ Create";createBtn.Font=FONT_BOL;createBtn.TextSize=11
+    createBtn.TextColor3=C.text;createBtn.BackgroundColor3=C.accent;createBtn.AutoButtonColor=false;createBtn.BorderSizePixel=0;mkCorner(createBtn,CR_SM)
+    createBtn.MouseButton1Click:Connect(function()
+        local name=nameInput.Text
+        if name==""then showToast("Enter a name!");return end
+        if getAllConfigs()[name]then showToast("Already exists!");return end
+        local ok,msg=saveConfig(name,false)
+        if ok then showToast("Created!");nameInput.Text="";refreshList()else showToast(msg)end
+    end)
+    local overwriteBtn=Instance.new("TextButton",btnRow1)
+    overwriteBtn.Size=UDim2.new(0.25,-6,1,0);overwriteBtn.Text="♻ Overwrite";overwriteBtn.Font=FONT_BOL;overwriteBtn.TextSize=11
+    overwriteBtn.TextColor3=C.text;overwriteBtn.BackgroundColor3=Color3.fromRGB(255,140,0);overwriteBtn.AutoButtonColor=false;overwriteBtn.BorderSizePixel=0;mkCorner(overwriteBtn,CR_SM)
+    overwriteBtn.MouseButton1Click:Connect(function()
+        local name=selectedConfig or nameInput.Text
+        if name==""then showToast("Select or enter name!");return end
+        local ok,msg=saveConfig(name,true)
+        if ok then showToast("Saved!");refreshList()else showToast(msg)end
+    end)
+    local loadBtn=Instance.new("TextButton",btnRow1)
+    loadBtn.Size=UDim2.new(0.25,-6,1,0);loadBtn.Text="📂 Load";loadBtn.Font=FONT_BOL;loadBtn.TextSize=11
+    loadBtn.TextColor3=C.text;loadBtn.BackgroundColor3=Color3.fromRGB(40,140,40);loadBtn.AutoButtonColor=false;loadBtn.BorderSizePixel=0;mkCorner(loadBtn,CR_SM)
+    loadBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        local ok,msg=loadConfig(selectedConfig);showToast(msg)
+    end)
+    local deleteBtn=Instance.new("TextButton",btnRow1)
+    deleteBtn.Size=UDim2.new(0.25,-6,1,0);deleteBtn.Text="🗑 Delete";deleteBtn.Font=FONT_BOL;deleteBtn.TextSize=11
+    deleteBtn.TextColor3=C.text;deleteBtn.BackgroundColor3=Color3.fromRGB(200,50,50);deleteBtn.AutoButtonColor=false;deleteBtn.BorderSizePixel=0;mkCorner(deleteBtn,CR_SM)
+    deleteBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        local ok,msg=deleteConfig(selectedConfig)
+        if ok then
+            if selectedConfig==autoLoadConfig then autoLoadConfig=nil;local c=getAllConfigs();c["__autoLoad"]=nil;saveConfigsToFile(c)end
+            selectedConfig=nil;refreshList();showToast("Deleted!")
+        else showToast(msg)end
+    end)
+    local btnRow2=Instance.new("Frame",mainScroll);btnRow2.BackgroundTransparency=1;btnRow2.Size=UDim2.new(1,0,0,34);btnRow2.LayoutOrder=lo;lo+=1
+    local btnLL2=Instance.new("UIListLayout",btnRow2);btnLL2.FillDirection=Enum.FillDirection.Horizontal;btnLL2.Padding=UDim.new(0,8)
+    local autoBtn=Instance.new("TextButton",btnRow2)
+    autoBtn.Size=UDim2.new(0.5,-4,1,0);autoBtn.Text="⭐ Set Auto Load";autoBtn.Font=FONT_BOL;autoBtn.TextSize=11
+    autoBtn.TextColor3=C.text;autoBtn.BackgroundColor3=Color3.fromRGB(255,200,50);autoBtn.AutoButtonColor=false;autoBtn.BorderSizePixel=0;mkCorner(autoBtn,CR_SM)
+    autoBtn.MouseButton1Click:Connect(function()
+        if not selectedConfig then showToast("Select a config!");return end
+        autoLoadConfig=selectedConfig;local c=getAllConfigs();c["__autoLoad"]=selectedConfig;saveConfigsToFile(c)
+        refreshList();showToast("Set!")
+    end)
+    local clearBtn=Instance.new("TextButton",btnRow2)
+    clearBtn.Size=UDim2.new(0.5,-4,1,0);clearBtn.Text="❌ Clear";clearBtn.Font=FONT_BOL;clearBtn.TextSize=11
+    clearBtn.TextColor3=C.text;clearBtn.BackgroundColor3=Color3.fromRGB(150,50,50);clearBtn.AutoButtonColor=false;clearBtn.BorderSizePixel=0;mkCorner(clearBtn,CR_SM)
+    clearBtn.MouseButton1Click:Connect(function()
+        autoLoadConfig=nil;local c=getAllConfigs();c["__autoLoad"]=nil;saveConfigsToFile(c)
+        refreshList();showToast("Cleared!")
+    end)
+    mkSep(mainScroll,lo);lo+=1
+    secHead("🔄 Auto Load Toggle",lo);lo+=1
+    local autoLoadFrame=Instance.new("Frame",mainScroll);autoLoadFrame.Size=UDim2.new(1,0,0,40);autoLoadFrame.LayoutOrder=lo
+    autoLoadFrame.BackgroundColor3=C.row;autoLoadFrame.BorderSizePixel=0;mkCorner(autoLoadFrame,CR_SM);mkStroke(autoLoadFrame,C.sep,0.4,1);mkPad(autoLoadFrame,8,14,8,14)
+    mkLabel({Parent=autoLoadFrame,Text="Enable Auto Load on Join",Font=FONT_MED,TextSize=12,TextColor=C.text,Size=UDim2.new(0,220,1,0)})
+    local autoLoadTrack=Instance.new("TextButton",autoLoadFrame);autoLoadTrack.Size=UDim2.new(0,44,0,22);autoLoadTrack.AnchorPoint=Vector2.new(1,0.5);autoLoadTrack.Position=UDim2.new(1,0,0.5,0);autoLoadTrack.Text="";autoLoadTrack.BackgroundColor3=C.toggleOff;autoLoadTrack.BorderSizePixel=0;mkCorner(autoLoadTrack,UDim.new(1,0))
+    local autoLoadKnob=Instance.new("Frame",autoLoadTrack);autoLoadKnob.Size=UDim2.new(0,16,0,16);autoLoadKnob.Position=UDim2.new(0,3,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(180,180,200);autoLoadKnob.BorderSizePixel=0;mkCorner(autoLoadKnob,UDim.new(1,0))
+    local autoLoadEnabled=(savedConfigs["__autoLoadEnabled"]==true)
+    if autoLoadEnabled then mkGradient(autoLoadTrack,C.accent,C.accentBrt);autoLoadKnob.Position=UDim2.new(1,-19,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(255,255,255)end
+    autoLoadTrack.MouseButton1Click:Connect(function()
+        autoLoadEnabled=not autoLoadEnabled;local c=getAllConfigs()
+        if autoLoadEnabled then
+            if not autoLoadConfig then showToast("Set a config first!");autoLoadEnabled=false;return end
+            mkGradient(autoLoadTrack,C.accent,C.accentBrt);autoLoadKnob.Position=UDim2.new(1,-19,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(255,255,255);c["__autoLoadEnabled"]=true;showToast("Auto-load ON!")
+        else
+            autoLoadTrack.BackgroundColor3=C.toggleOff
+            for _,v in ipairs(autoLoadTrack:GetChildren())do if v:IsA("UIGradient")then v:Destroy()end end
+            autoLoadKnob.Position=UDim2.new(0,3,0,3);autoLoadKnob.BackgroundColor3=Color3.fromRGB(180,180,200);c["__autoLoadEnabled"]=nil;showToast("Auto-load OFF!")
+        end
+        saveConfigsToFile(c)
+    end)
+end
+
+local function renderKeybinds()
+    clearContent();local lo=1
+    secHead("⌨ Keybinds",lo);lo+=1
+    for id,bind in pairs(Keybinds)do createKeybindRow({id=id,layoutOrder=lo});lo+=1 end
+    createActionRow({title="Reset All Keybinds",desc="Restore defaults",layoutOrder=lo,buttonText="↺ Reset",onClick=function()
+        local defaults = {
+            triggerbot={key=Enum.KeyCode.E, holdMode=false, label="Triggerbot"},
+            silentAim={key=Enum.KeyCode.T, holdMode=false, label="Silent Aim"},
+            esp={key=Enum.KeyCode.Z, holdMode=false, label="ESP"},
+            infiniteJump={key=Enum.KeyCode.X, holdMode=false, label="Inf Jump"},
+            flick={key=Enum.KeyCode.F, holdMode=false, label="Flick"},
+            unlockAll={key=Enum.KeyCode.U, holdMode=false, label="Unlock All"}
+        }
+        for k, v in pairs(defaults) do
+            Keybinds[k] = {key=v.key, holdMode=v.holdMode, label=v.label}
+        end
+        renderKeybinds();showToast("Keybinds reset!")
+    end});lo+=1
+end
+
+-- NAVIGATION
+mkNavHdr("🎯 COMBAT",1)
+mkNav("Triggerbot",2,renderTriggerbot)
+mkNav("Silent Aim",3,renderSilentAim)
+mkNav("Flick",4,renderFlick)
+mkSep(sbScroll,5)
+mkNavHdr("🏃 MOVEMENT",6)
+mkNav("Infinite Jump",7,renderInfiniteJump)
+mkSep(sbScroll,8)
+mkNavHdr("👁 VISUALS",9)
+mkNav("ESP",10,renderESP)
+mkSep(sbScroll,11)
+mkNavHdr("🎨 COSMETICS",12)
+mkNav("Unlock All",13,renderUnlockAll)
+mkSep(sbScroll,14)
+mkNavHdr("🛡 PROTECTION",15)
+mkNav("Staff Detector",16,renderStaffDetector)
+mkSep(sbScroll,17)
+mkNavHdr("📐 VISUALS+",18)
+mkNav("Stretch Res",19,renderStretchRes)
+mkSep(sbScroll,20)
+mkNavHdr("⚙ SETTINGS",21)
+mkNav("Config",22,renderConfig)
+mkNav("Keybinds",23,renderKeybinds)
+
+renderTriggerbot()
+if navBtns["Triggerbot"]then setNavActive(navBtns["Triggerbot"])end
+
+-- MOBILE BUTTON (Movable, Default Top Middle)
+local mobileButton = nil
 if ResponsiveUI.State.IsMobile then
     mobileButton = Instance.new("ImageButton")
     mobileButton.Name = "MobileMenuButton"
     mobileButton.Size = UDim2.fromOffset(50, 50)
-    mobileButton.Position = UDim2.new(1, -70, 1, -70)
-    mobileButton.AnchorPoint = Vector2.new(0.5, 0.5)
+    mobileButton.Position = UDim2.new(0.5, 0, 0, 10)
+    mobileButton.AnchorPoint = Vector2.new(0.5, 0)
     mobileButton.BackgroundTransparency = 0.2
     mobileButton.BackgroundColor3 = Color3.fromRGB(140, 30, 255)
     mobileButton.Image = "rbxassetid://134381155775118"
@@ -1068,9 +1545,48 @@ if ResponsiveUI.State.IsMobile then
     mStroke.Transparency = 0.3
     mStroke.Parent = mobileButton
     
-    mobileButton.MouseButton1Click:Connect(function()
-        menuOpen = not menuOpen
-        root.Visible = menuOpen
+    local btnDragging = false
+    local btnDragStart = nil
+    local btnStartPos = nil
+    
+    mobileButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            btnDragging = true
+            btnDragStart = input.Position
+            btnStartPos = mobileButton.Position
+            TweenService:Create(mobileButton, TweenInfo.new(0.1), {Size = UDim2.fromOffset(45, 45)}):Play()
+        end
+    end)
+    
+    UIS.InputChanged:Connect(function(input)
+        if btnDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - btnDragStart
+            mobileButton.Position = UDim2.new(btnStartPos.X.Scale, btnStartPos.X.Offset + delta.X, btnStartPos.Y.Scale, btnStartPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    UIS.InputEnded:Connect(function(input)
+        if btnDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
+            btnDragging = false
+            TweenService:Create(mobileButton, TweenInfo.new(0.1), {Size = UDim2.fromOffset(50, 50)}):Play()
+            
+            if (input.Position - btnDragStart).Magnitude < 10 then
+                menuOpen = not menuOpen
+                root.Visible = menuOpen
+            else
+                local buttonSize = mobileButton.AbsoluteSize
+                local screenSize = Camera.ViewportSize
+                local minX = buttonSize.X / 2
+                local maxX = screenSize.X - buttonSize.X / 2
+                local currentX = mobileButton.AbsolutePosition.X + buttonSize.X / 2
+                local clampedX = math.clamp(currentX, minX, maxX)
+                local minY = buttonSize.Y / 2
+                local maxY = screenSize.Y - buttonSize.Y / 2
+                local currentY = mobileButton.AbsolutePosition.Y + buttonSize.Y / 2
+                local clampedY = math.clamp(currentY, minY, maxY)
+                mobileButton.Position = UDim2.new(0, clampedX - buttonSize.X / 2, 0, clampedY - buttonSize.Y / 2)
+            end
+        end
     end)
 end
 
@@ -1096,8 +1612,8 @@ UIS.InputBegan:Connect(function(input,gp)
             if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
             if id=="esp"then Features.setESP(not Features.espEnabled)end
             if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
-            if id=="flick"then doFlick()end
-            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
+            if id=="flick"then doFlick() end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled) end
         end
     end
 end)
@@ -1109,8 +1625,8 @@ UIS.InputEnded:Connect(function(input)
             if id=="silentAim"then Features.setSilentAim(not Features.silentAimEnabled)end
             if id=="esp"then Features.setESP(not Features.espEnabled)end
             if id=="infiniteJump"then Features.setInfiniteJump(not Features.infiniteJumpEnabled)end
-            if id=="flick"then doFlick()end
-            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled)end
+            if id=="flick"then doFlick() end
+            if id=="unlockAll"then Features.setUnlockAll(not Features.unlockAllEnabled) end
         end
     end
 end)
@@ -1121,6 +1637,19 @@ pcall(function()
     local saved = getAllConfigs()
     if saved["__autoLoadEnabled"] and saved["__autoLoad"] then
         loadConfig(saved["__autoLoad"])
+    end
+end)
+
+-- Screen resize handler
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    ResponsiveUI.DetectDevice()
+    local newWidth, newHeight, newSidebarWidth = ResponsiveUI.CalculateSize()
+    root.Size = UDim2.fromOffset(newWidth, newHeight)
+    sidebar.Size = UDim2.new(0, newSidebarWidth, 1, 0)
+    main.Size = UDim2.new(1, -newSidebarWidth, 1, 0)
+    main.Position = UDim2.fromOffset(newSidebarWidth, 0)
+    if mobileButton then
+        mobileButton.Visible = ResponsiveUI.State.IsMobile
     end
 end)
 
