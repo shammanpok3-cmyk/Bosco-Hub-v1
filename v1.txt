@@ -26,11 +26,19 @@ local LP = Players.LocalPlayer
 local PGui = LP:WaitForChild("PlayerGui")
 local Camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
 
--- Game modules
-local util = require(repS.Modules.Utility)
-local enum = require(repS.Modules.EnumLibrary)
-local FighterController = require(LP.PlayerScripts.Controllers.FighterController)
-local SpectateController = require(LP.PlayerScripts.Controllers:WaitForChild("SpectateController"))
+-- Game modules (with error handling)
+local util, enum, FighterController, SpectateController
+
+pcall(function() util = require(repS.Modules.Utility) end)
+pcall(function() enum = require(repS.Modules.EnumLibrary) end)
+pcall(function() FighterController = require(LP.PlayerScripts.Controllers.FighterController) end)
+pcall(function() SpectateController = require(LP.PlayerScripts.Controllers:WaitForChild("SpectateController")) end)
+
+-- Fallback if modules not found
+if not util then util = { Raycast = function(...) return Workspace:Raycast(...) end, EncodeCFrame = function(cf) return {cf:GetComponents()} end } end
+if not enum then enum = { ToEnum = function(s) return s end } end
+if not FighterController then FighterController = { LocalFighter = nil, Objects = {} } end
+if not SpectateController then SpectateController = { CurrentDuelSubject = nil } end
 
 -- Team Check
 local function isTeammate(player)
