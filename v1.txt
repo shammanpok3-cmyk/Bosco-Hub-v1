@@ -576,138 +576,150 @@ end
 local function deleteConfig(name) local configs = getAllConfigs(); if not configs[name] then return false end; configs[name] = nil; saveConfigsToFile(configs); return true, "Deleted!" end
 
 -- ============================================
--- IMPROVED RESPONSIVE UI
+-- SIMPLE RESPONSIVE UI (No fancy functions)
 -- ============================================
-ResponsiveUI.Config = {
-    Devices = {
-        Mobile = {
-            UIScale = 0.95, -- Increased from 0.7
-            SidebarWidth = 180, -- Increased from 150
-            FontScale = 0.9, -- Increased from 0.8
-            RootWidth = 420, -- Wider
-            RootHeight = 600,
-            CompactMode = true,
-        },
-        Tablet = {
-            UIScale = 0.95,
-            SidebarWidth = 190,
-            FontScale = 0.95,
-            RootWidth = 750,
-            RootHeight = 620,
-            CompactMode = false,
-        },
-        PC = {
-            UIScale = 1.0,
-            SidebarWidth = 200,
-            FontScale = 1.0,
-            RootWidth = 880,
-            RootHeight = 540,
-            CompactMode = false,
-        }
-    }
-}
 
--- Calculate responsive size based on screen
-function ResponsiveUI.CalculateSize()
-    local screenWidth = Camera.ViewportSize.X
-    local screenHeight = Camera.ViewportSize.Y
-    local deviceConfig = ResponsiveUI.Config.Devices[ResponsiveUI.State.Device]
-    
-    -- Ensure UI doesn't exceed screen size
-    local maxWidth = screenWidth * 0.95
-    local maxHeight = screenHeight * 0.9
-    
-    -- Calculate width
-    local width = deviceConfig.RootWidth
-    if width > maxWidth then
-        width = maxWidth
-    end
-    
-    -- Calculate height
-    local height = deviceConfig.RootHeight
-    if height > maxHeight then
-        height = maxHeight
-    end
-    
-    -- For mobile, use full screen width with margins
-    if ResponsiveUI.State.IsMobile then
-        width = screenWidth - 20 -- 10px margin on each side
-        height = math.min(deviceConfig.RootHeight, maxHeight)
-    end
-    
-    -- Calculate sidebar width (proportional)
-    local sidebarWidth = math.min(deviceConfig.SidebarWidth, width * 0.35)
-    
-    return width, height, sidebarWidth
+-- Basic device detection
+local screenWidth = Camera.ViewportSize.X
+local screenHeight = Camera.ViewportSize.Y
+local isMobile = (screenWidth <= 800) or (UIS.TouchEnabled and screenWidth <= 1024)
+
+-- Calculate UI size based on screen
+local rootWidth, rootHeight, sidebarWidth
+
+if isMobile then
+    -- Mobile: Use almost full screen
+    rootWidth = screenWidth - 20
+    rootHeight = math.min(600, screenHeight - 20)
+    sidebarWidth = math.floor(rootWidth * 0.25) -- 25% for sidebar
+elseif screenWidth <= 1200 then
+    -- Tablet: Medium size
+    rootWidth = math.min(750, screenWidth - 40)
+    rootHeight = math.min(620, screenHeight - 40)
+    sidebarWidth = 190
+else
+    -- PC: Default size
+    rootWidth = 880
+    rootHeight = 540
+    sidebarWidth = 200
 end
-
--- Update UI size when screen changes
-function ResponsiveUI.UpdateUISize()
-    local width, height, sidebarWidth = ResponsiveUI.CalculateSize()
-    
-    if root then
-        root.Size = UDim2.fromOffset(width, height)
-        sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
-        main.Size = UDim2.new(1, -sidebarWidth, 1, 0)
-        main.Position = UDim2.fromOffset(sidebarWidth, 0)
-        
-        -- Adjust font sizes
-        for _, child in ipairs(mainScroll:GetChildren()) do
-            if child:IsA("TextLabel") then
-                child.TextSize = math.max(10, child.TextSize * ResponsiveUI.State.Scale)
-            end
-        end
-    end
-end
-
--- Initialize with proper sizing
-ResponsiveUI.DetectDevice()
-local rootWidth, rootHeight, sidebarWidth = ResponsiveUI.CalculateSize()
 
 -- Create root with calculated size
-root = Instance.new("Frame")
-root.Name = "Root"
-root.BackgroundColor3 = C.bg
-root.BorderSizePixel = 0
-root.Size = UDim2.fromOffset(rootWidth, rootHeight)
-root.Position = UDim2.new(0.5, 0, 0.5, 0)
-root.AnchorPoint = Vector2.new(0.5, 0.5)
-root.ClipsDescendants = true
-root.ZIndex = 999
-root.Visible = false
-root.Parent = gui
+local root=Instance.new("Frame")
+root.Name="Root"
+root.BackgroundColor3=C.bg
+root.BorderSizePixel=0
+root.Size=UDim2.fromOffset(rootWidth, rootHeight)
+root.Position=UDim2.new(0.5,0,0.5,0)
+root.AnchorPoint=Vector2.new(0.5,0.5)
+root.ClipsDescendants=true
+root.ZIndex=999
+root.Visible=false
+root.Parent=gui
+mkCorner(root,CR_XL)
+mkStroke(root,C.accent,0,2)
+mkGradient(root,C.bg,Color3.fromRGB(8,0,20))
 
--- Create sidebar with calculated width
-sidebar = Instance.new("Frame")
-sidebar.BackgroundColor3 = C.sidebarBg
-sidebar.BorderSizePixel = 0
-sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
-sidebar.ZIndex = 5
-sidebar.Parent = body
+-- Create sidebar
+local sidebar=Instance.new("Frame")
+sidebar.BackgroundColor3=C.sidebarBg
+sidebar.BorderSizePixel=0
+sidebar.Size=UDim2.new(0, sidebarWidth, 1, 0)
+sidebar.ZIndex=5
+sidebar.Parent=body
 
--- Create main with calculated width
-main = Instance.new("Frame")
-main.Name = "Main"
-main.BackgroundColor3 = C.panel
-main.BorderSizePixel = 0
-main.Size = UDim2.new(1, -sidebarWidth, 1, 0)
-main.Position = UDim2.fromOffset(sidebarWidth, 0)
-main.ZIndex = 4
-main.Parent = body
+-- Create main area
+local main=Instance.new("Frame")
+main.Name="Main"
+main.BackgroundColor3=C.panel
+main.BorderSizePixel=0
+main.Size=UDim2.new(1, -sidebarWidth, 1, 0)
+main.Position=UDim2.fromOffset(sidebarWidth, 0)
+main.ZIndex=4
+main.Parent=body
 
--- Listen for screen changes
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-    ResponsiveUI.DetectDevice()
-    ResponsiveUI.UpdateUISize()
+-- ============================================
+-- MOBILE BUTTON (Simple version)
+-- ============================================
+if isMobile then
+    local mobileButton = Instance.new("ImageButton")
+    mobileButton.Name = "MobileMenuButton"
+    mobileButton.Size = UDim2.fromOffset(50, 50)
+    mobileButton.Position = UDim2.new(0.5, -25, 0, 10) -- Top middle
+    mobileButton.BackgroundTransparency = 0.2
+    mobileButton.BackgroundColor3 = Color3.fromRGB(140, 30, 255)
+    mobileButton.Image = "rbxassetid://134381155775118"
+    mobileButton.ScaleType = Enum.ScaleType.Fit
+    mobileButton.ZIndex = 999
+    mobileButton.Parent = gui
     
-    -- Update mobile button visibility
-    if mobileButton then
-        mobileButton.Visible = ResponsiveUI.State.IsMobile
-    end
-end)
+    -- Corner
+    local mCorner = Instance.new("UICorner")
+    mCorner.CornerRadius = UDim.new(0, 12)
+    mCorner.Parent = mobileButton
+    
+    -- Stroke
+    local mStroke = Instance.new("UIStroke")
+    mStroke.Color = Color3.fromRGB(180, 80, 255)
+    mStroke.Thickness = 2
+    mStroke.Transparency = 0.3
+    mStroke.Parent = mobileButton
+    
+    -- Simple drag functionality
+    local dragging = false
+    local dragStart = nil
+    local buttonStart = nil
+    
+    mobileButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or 
+           input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            buttonStart = mobileButton.Position
+        end
+    end)
+    
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.Touch or 
+                        input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - dragStart
+            mobileButton.Position = UDim2.new(
+                buttonStart.X.Scale,
+                buttonStart.X.Offset + delta.X,
+                buttonStart.Y.Scale,
+                buttonStart.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    UIS.InputEnded:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.Touch or 
+                        input.UserInputType == Enum.UserInputType.MouseButton1) then
+            dragging = false
+            
+            -- If tap (not drag), toggle menu
+            if (input.Position - dragStart).Magnitude < 10 then
+                menuOpen = not menuOpen
+                root.Visible = menuOpen
+            end
+        end
+    end)
+end
 
--- Initial size update
-ResponsiveUI.UpdateUISize()
+-- Screen resize handler (simple)
+Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+    -- Recalculate on screen change
+    local newWidth = Camera.ViewportSize.X
+    local newHeight = Camera.ViewportSize.Y
+    
+    -- Update root size
+    if isMobile then
+        root.Size = UDim2.fromOffset(newWidth - 20, math.min(600, newHeight - 20))
+    end
+    
+    -- Keep root centered
+    root.Position = UDim2.new(0.5, 0, 0.5, 0)
+end)
 
 -- ============================================
 -- UI CREATION
