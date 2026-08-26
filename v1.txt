@@ -15,15 +15,16 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Cloneref for security
-local repS = cloneref(ReplicatedStorage)
-local plrs = cloneref(Players)
-local runS = cloneref(RunService)
-local ws = cloneref(Workspace)
-local uis = cloneref(UIS)
+-- Use services directly (remove cloneref if not supported)
+local repS = ReplicatedStorage
+local plrs = Players
+local runS = RunService
+local ws = Workspace
+local uis = UIS
 
 local LP = Players.LocalPlayer
 local PGui = LP:WaitForChild("PlayerGui")
-local Camera = Workspace.CurrentCamera
+local Camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
 
 -- Game modules
 local util = require(repS.Modules.Utility)
